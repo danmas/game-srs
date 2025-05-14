@@ -1,0 +1,8 @@
+<y:SVGNode>
+<y:GenericNode configuration="com.yworks.flowchart.process">
+<y:GenericNode configuration="com.yworks.flowchart.terminator">
+<y:GenericNode configuration="com.yworks.flowchart.preparation">
+<y:GenericNode configuration="com.yworks.flowchart.process">
+
+</y:SVGNode>
+</y:GenericNode>

@@ -1,0 +1,12 @@
+{
+  "name": "srs-js",
+  "version": "0.1.0",
+  "description": "Submarine simulator ported from AS3 to JS",
+  "main": "src/game/Game.js",
+  "scripts": {
+    "start": "live-server --open=src"
+  },
+  "devDependencies": {
+    "live-server": "^1.2.2"
+  }
+} 

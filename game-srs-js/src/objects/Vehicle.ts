@@ -1,0 +1,591 @@
+import Phaser from 'phaser';
+import { Constants } from '../utils/Constants';
+import { Settings } from '../utils/Settings';
+
+/**
+ * Базовый класс для всех движущихся объектов
+ */
+export class Vehicle extends Phaser.GameObjects.Sprite {
+  // Константы для уровней мощности
+  static readonly POWER_0: number = 0;
+  static readonly POWER_1: number = 1;
+  static readonly POWER_2: number = 2;
+  static readonly POWER_3: number = 3;
+  static readonly POWER_4: number = 4;
+  static readonly POWER_5: number = 5;
+  static readonly POWER_6: number = 6;
+  
+  // Константы для состояний движения
+  static readonly ST_MOVE_UNKNOWN: number = 0;
+  static readonly ST_WP_MOVING: number = 1;
+  static readonly ST_COMMAND_MOVING: number = 2;
+  static readonly ST_WP_SEARCH_TARGET: number = 3;
+  static readonly ST_WP_TORP_DEFENCE_MOVING: number = 4;
+  
+  // Константы для положения руля
+  static readonly RUDER_RIGHT_15: number = -3;
+  static readonly RUDER_RIGHT_10: number = -2;
+  static readonly RUDER_RIGHT_5: number = -1;
+  static readonly RUDER_0: number = 0;
+  static readonly RUDER_LEFT_5: number = 1;
+  static readonly RUDER_LEFT_10: number = 2;
+  static readonly RUDER_LEFT_15: number = 3;
+  
+  // Свойства объекта
+  protected position: Phaser.Math.Vector2;
+  protected velocity: Phaser.Math.Vector2;
+  protected direction: number = 0;
+  protected directionTarget: number = 0;
+  protected power: number = Vehicle.POWER_0;
+  protected rudder: number = Vehicle.RUDER_0; // Положение руля
+  protected maxVelocity: number = 30;
+  protected color: number = 0xFFFFFF;
+  protected forces: number = Constants.FORCES_WHITE;
+  protected timeLive: number = 0;
+  protected underControl: boolean = false;
+  protected displaySelected: boolean = false;
+  protected moveState: number = Vehicle.ST_MOVE_UNKNOWN;
+  protected wayPoints: Phaser.Math.Vector2[] = [];
+  protected wayPointTypes: number[] = [];
+  protected moveOnTarget: boolean = false;
+  
+  // Маневренность в процентах (100 - торпеды и катера, 50-80 - корабли)
+  protected manevr_prc: number = 100;
+  
+  /**
+   * Конструктор
+   * @param scene Сцена, к которой принадлежит объект
+   * @param x Начальная позиция X
+   * @param y Начальная позиция Y
+   * @param texture Текстура спрайта
+   */
+  constructor(scene: Phaser.Scene, x: number, y: number, texture?: string) {
+    super(scene, x, y, texture || 'vehicle');
+    this.position = new Phaser.Math.Vector2(x, y);
+    this.velocity = new Phaser.Math.Vector2(0, 0);
+    
+    // Добавление в сцену
+    (scene.add as Phaser.GameObjects.GameObjectFactory).existing(this);
+    
+    // Если нет текстуры, рисуем стандартную фигуру
+    if (!texture) {
+      this.drawVehicle();
+    }
+  }
+  
+  /**
+   * Рисует стандартную фигуру для объекта
+   */
+  protected drawVehicle(): void {
+    // Создаем графику для отрисовки
+    const graphics = (this.scene.add as Phaser.GameObjects.GameObjectFactory).graphics();
+    
+    // Очищаем графику
+    graphics.clear();
+    
+    // Рисуем более заметный объект (треугольник)
+    graphics.fillStyle(this.color, 1);
+    graphics.lineStyle(2, 0x000000, 1);
+    
+    // Треугольник для обозначения направления движения
+    graphics.beginPath();
+    graphics.moveTo(0, -20);    // Вершина (нос)
+    graphics.lineTo(-15, 15);   // Левый нижний угол (корма)
+    graphics.lineTo(15, 15);    // Правый нижний угол (корма)
+    graphics.closePath();
+    graphics.fillPath();
+    graphics.strokePath();
+    
+    // Создаем текстуру из графики
+    const textureName = 'vehicle' + this.forces; // Разные текстуры для разных сторон
+    graphics.generateTexture(textureName, 40, 40);
+    graphics.destroy();
+    
+    // Устанавливаем текстуру
+    this.setTexture(textureName);
+    this.setDisplaySize(40, 40);
+  }
+  
+  /**
+   * Обновляет позицию и состояние объекта
+   * @param time Текущее время
+   * @param delta Прошедшее с последнего обновления время в мс
+   */
+  update(time: number, delta: number): void {
+    this.timeLive += delta;
+    
+    // Обновляем физику
+    this.updatePhysics(delta);
+    
+    // Обновляем позицию спрайта
+    this.setPosition(this.position.x, this.position.y);
+    this.setRotation(Phaser.Math.DegToRad(this.direction));
+  }
+  
+  /**
+   * Обновляет физику объекта
+   * @param delta Прошедшее время в мс
+   */
+  protected updatePhysics(delta: number): void {
+    const deltaSeconds = delta / 1000;
+    
+    // Обновление направления на основе положения руля, если руль не в нейтральном положении
+    if (this.rudder !== Vehicle.RUDER_0) {
+      // Скорость поворота зависит от положения руля, скорости и маневренности
+      // Реализуем поворот как в оригинальной ActionScript-версии
+      // direction_deg -= dt_ms * command_params.rudder * VehicleMoving.getAlphaR(cur_vel_gm, manevr_prc) * cur_vel_gm;
+      const turnFactor = this.rudder * this.getAlphaR() * this.velocity.length();
+      
+      // Применяем формулу поворота как в оригинале
+      this.direction -= delta * turnFactor;
+      
+      // Нормализуем угол
+      this.direction = (this.direction + 360) % 360;
+      this.directionTarget = this.direction; // Целевое направление следует за текущим при управлении рулем
+    }
+    // Иначе, если есть целевое направление, двигаемся к нему
+    else if (this.direction !== this.directionTarget) {
+      // Находим кратчайший путь поворота
+      let diff = this.directionTarget - this.direction;
+      if (diff > 180) diff -= 360;
+      if (diff < -180) diff += 360;
+      
+      // Скорость поворота зависит от мощности и коэффициентов
+      let turnRate = this.power * (Settings.alfa_r_0 + Settings.alfa_r_30);
+      
+      // Применяем поворот с ограничением по времени
+      if (Math.abs(diff) <= turnRate * deltaSeconds) {
+        this.direction = this.directionTarget;
+      } else {
+        this.direction += Math.sign(diff) * turnRate * deltaSeconds;
+      }
+      
+      // Нормализуем угол
+      this.direction = (this.direction + 360) % 360;
+    }
+    
+    // Обновление скорости в зависимости от мощности
+    const targetSpeed = this.power * this.maxVelocity / Vehicle.POWER_6;
+    const currentSpeed = this.velocity.length();
+    
+    // Используем больший коэффициент для заметного изменения скорости
+    // и умножаем на 1000 для компенсации deltaSeconds, как в оригинальном коде
+    const inertiaFactor = Settings.alfa_v * 1000;
+    
+    if (Math.abs(currentSpeed - targetSpeed) > 0.01) {
+      // Плавное изменение скорости с учетом инерции
+      const speedChange = (targetSpeed - currentSpeed) * inertiaFactor * deltaSeconds;
+      
+      if (currentSpeed < 0.1) {
+        // Если стоим на месте или почти остановились, начинаем движение в направлении
+        this.velocity.x = Math.sin(Phaser.Math.DegToRad(this.direction)) * targetSpeed * 0.1;
+        this.velocity.y = -Math.cos(Phaser.Math.DegToRad(this.direction)) * targetSpeed * 0.1;
+      } else {
+        // Иначе изменяем текущую скорость пропорционально
+        // Ограничиваем изменение скорости
+        let newSpeed = currentSpeed + speedChange;
+        if ((speedChange > 0 && newSpeed > targetSpeed) || 
+            (speedChange < 0 && newSpeed < targetSpeed)) {
+          newSpeed = targetSpeed;
+        }
+        
+        // Устанавливаем новое значение скорости, сохраняя направление
+        if (newSpeed > 0.1) {
+          const scale = newSpeed / currentSpeed;
+          this.velocity.scale(scale);
+        } else {
+          // Если скорость стала слишком маленькой, полностью останавливаемся
+          this.velocity.x = 0;
+          this.velocity.y = 0;
+        }
+      }
+    }
+    
+    // Пересчитываем направление вектора скорости по текущему углу direction
+    if (this.velocity.length() > 0.1) {
+      const speed = this.velocity.length();
+      this.velocity.x = Math.sin(Phaser.Math.DegToRad(this.direction)) * speed;
+      this.velocity.y = -Math.cos(Phaser.Math.DegToRad(this.direction)) * speed;
+    }
+    
+    // Обновляем позицию
+    this.position.x += this.velocity.x * deltaSeconds;
+    this.position.y += this.velocity.y * deltaSeconds;
+    
+    // Проверяем достижение точек маршрута
+    this.checkWayPoints();
+  }
+  
+  /**
+   * Получает коэффициент поворота в зависимости от скорости
+   * Аналог getAlphaR из ActionScript версии
+   */
+  protected getAlphaR(): number {
+    const vel = this.velocity.length();
+    // Базовая формула из ActionScript:
+    // ar = (Settings.alfa_r_30 - Settings.alfa_r_0) / (100.*Settings.koef_v) * vel + Settings.alfa_r_0;
+    const ar = (Settings.alfa_r_30 - Settings.alfa_r_0) / (100 * Settings.koef_v) * vel + Settings.alfa_r_0;
+    
+    // Учитываем маневренность как в оригинальной AS-версии
+    return ar * this.manevr_prc / 100;
+  }
+  
+  /**
+   * Проверяет достижение точек маршрута
+   */
+  protected checkWayPoints(): void {
+    if (this.wayPoints.length > 0) {
+      const firstWayPoint = this.wayPoints[0];
+      const distance = Phaser.Math.Distance.Between(
+        this.position.x, this.position.y,
+        firstWayPoint.x, firstWayPoint.y
+      );
+      
+      // Если достигли точки маршрута
+      if (distance < Constants.WAY_POINT_SIZE) {
+        // Удаляем первую точку
+        this.wayPoints.shift();
+        this.wayPointTypes.shift();
+        
+        // Если есть еще точки, устанавливаем направление на следующую
+        if (this.wayPoints.length > 0) {
+          this.setDirectionToWayPoint(this.wayPoints[0]);
+        } else {
+          // Остановка, если нет больше точек
+          this.power = Vehicle.POWER_0;
+        }
+      } else {
+        // Корректируем направление на текущую точку
+        this.setDirectionToWayPoint(firstWayPoint);
+      }
+    }
+  }
+  
+  /**
+   * Устанавливает направление на точку
+   * @param target Целевая точка
+   */
+  protected setDirectionToWayPoint(target: Phaser.Math.Vector2): void {
+    const angle = Phaser.Math.RadToDeg(
+      Phaser.Math.Angle.Between(this.position.x, this.position.y, target.x, target.y)
+    );
+    this.directionTarget = (angle + 90) % 360;
+    if (this.directionTarget < 0) this.directionTarget += 360;
+  }
+  
+  /**
+   * Добавляет точку маршрута
+   * @param x Координата X
+   * @param y Координата Y
+   * @param type Тип точки маршрута
+   */
+  public addWayPoint(x: number, y: number, type: number = Constants.WP_SHIP): void {
+    this.wayPoints.push(new Phaser.Math.Vector2(x, y));
+    this.wayPointTypes.push(type);
+  }
+  
+  /**
+   * Начинает движение к точкам маршрута
+   */
+  public startMoveOnWP(): void {
+    if (this.wayPoints.length > 0) {
+      this.moveState = Vehicle.ST_WP_MOVING;
+      this.setDirectionToWayPoint(this.wayPoints[0]);
+      this.power = Vehicle.POWER_3; // Средняя скорость по умолчанию
+    }
+  }
+  
+  /**
+   * Останавливает движение и удаляет все точки маршрута
+   */
+  public stopMoveOnWayPoint(): void {
+    this.wayPoints = [];
+    this.wayPointTypes = [];
+    // Не сбрасываем мощность при ручном управлении рулем, как в оригинальной AS-версии
+    // this.power = Vehicle.POWER_0;
+    this.moveState = Vehicle.ST_MOVE_UNKNOWN;
+  }
+  
+  /**
+   * Устанавливает мощность/скорость движения
+   * @param newPower Новый уровень мощности
+   */
+  public setPower(newPower: number): void {
+    if (newPower >= Vehicle.POWER_0 && newPower <= Vehicle.POWER_6) {
+      this.power = newPower;
+    }
+  }
+  
+  /**
+   * Устанавливает направление движения (курс)
+   * @param newDirection Новое направление в градусах (0-359)
+   */
+  public setDirection(newDirection: number): void {
+    this.directionTarget = ((newDirection % 360) + 360) % 360;
+  }
+  
+  /**
+   * Устанавливает максимальную скорость
+   * @param newMaxVelocity Новая максимальная скорость
+   */
+  public setMaxVelocity(newMaxVelocity: number): void {
+    this.maxVelocity = newMaxVelocity;
+  }
+  
+  /**
+   * Получает текущую позицию
+   */
+  public getPosition(): Phaser.Math.Vector2 {
+    return this.position.clone();
+  }
+  
+  /**
+   * Получает текущую скорость в виде вектора
+   */
+  public getVelocity(): Phaser.Math.Vector2 {
+    return this.velocity.clone();
+  }
+  
+  /**
+   * Получает скорость объекта
+   */
+  public getSpeed(): number {
+    return this.velocity.length();
+  }
+  
+  /**
+   * Получает текущее направление (курс)
+   */
+  public getDirection(): number {
+    return this.direction;
+  }
+  
+  /**
+   * Получает время жизни объекта в миллисекундах
+   */
+  public getTimeLiveMs(): number {
+    return this.timeLive;
+  }
+  
+  /**
+   * Получает принадлежность к силам
+   */
+  public getForces(): number {
+    return this.forces;
+  }
+  
+  /**
+   * Устанавливает принадлежность к силам
+   * @param newForces Новая принадлежность к силам
+   */
+  public setForces(newForces: number): void {
+    this.forces = newForces;
+    
+    // Устанавливаем цвет в зависимости от принадлежности
+    if (this.forces === Constants.FORCES_RED) {
+      this.color = Constants.COLOR_LIGHT_RED;
+    } else {
+      this.color = Constants.COLOR_LIGHT_WHITE;
+    }
+  }
+  
+  /**
+   * Устанавливает отметку выбора объекта
+   * @param selected Выбран ли объект
+   */
+  public setSelected(selected: boolean): void {
+    this.displaySelected = selected;
+  }
+  
+  /**
+   * Проверяет, выбран ли объект
+   */
+  public isSelected(): boolean {
+    return this.displaySelected;
+  }
+  
+  /**
+   * Устанавливает ручное управление объектом
+   * @param control Включено ли ручное управление
+   */
+  public setUnderControl(control: boolean): void {
+    this.underControl = control;
+  }
+  
+  /**
+   * Проверяет, находится ли объект под ручным управлением
+   */
+  public isUnderControl(): boolean {
+    return this.underControl;
+  }
+  
+  /**
+   * Проверяет столкновение с другим объектом
+   * @param other Другой объект для проверки столкновения
+   */
+  public testCollision(other: Vehicle): boolean {
+    const distance = Phaser.Math.Distance.Between(
+      this.position.x, this.position.y,
+      other.position.x, other.position.y
+    );
+    
+    // Примитивная проверка столкновения по расстоянию
+    return distance < 15;
+  }
+  
+  /**
+   * Уничтожает объект
+   */
+  public destroy(fromScene?: boolean): void {
+    super.destroy(fromScene);
+  }
+  
+  /**
+   * Получает мощность/скорость движения
+   * @returns Текущий уровень мощности
+   */
+  public getPower(): number {
+    return this.power;
+  }
+  
+  /**
+   * Проверяет, есть ли точки маршрута
+   * @returns true, если есть хотя бы одна точка маршрута
+   */
+  public hasWayPoints(): boolean {
+    return this.wayPoints.length > 0;
+  }
+  
+  /**
+   * Устанавливает положение руля
+   * @param newRudder Новое положение руля
+   */
+  public setRudder(newRudder: number): void {
+    if (newRudder >= Vehicle.RUDER_RIGHT_15 && newRudder <= Vehicle.RUDER_LEFT_15) {
+      this.rudder = newRudder;
+    }
+    
+    // Обновляем интерфейс, если корабль под контролем
+    if (this.underControl) {
+      this.showRudder();
+    }
+  }
+  
+  /**
+   * Изменяет положение руля
+   * @param delta Изменение положения руля (+1 - влево, -1 - вправо)
+   */
+  public rudderChange(delta: number): void {
+    console.log(`Vehicle.rudderChange вызван с delta=${delta}, текущий руль=${this.rudder}`);
+    
+    // Возвращаем в нейтральное положение, если меняем направление
+    if ((this.rudder < 0 && delta > 0) || (this.rudder > 0 && delta < 0)) {
+      this.rudder = Vehicle.RUDER_0;
+      console.log(`Руль установлен в нейтральное положение: ${this.rudder}`);
+      this.showRudder();
+      return;
+    }
+    
+    // Увеличиваем положение руля влево
+    if (delta > 0) {
+      if (this.rudder === Vehicle.RUDER_0) {
+        this.rudder = Vehicle.RUDER_LEFT_5;
+      } else if (this.rudder === Vehicle.RUDER_LEFT_5) {
+        this.rudder = Vehicle.RUDER_LEFT_10;
+      } else if (this.rudder === Vehicle.RUDER_LEFT_10) {
+        this.rudder = Vehicle.RUDER_LEFT_15;
+      }
+    }
+    
+    // Увеличиваем положение руля вправо
+    if (delta < 0) {
+      if (this.rudder === Vehicle.RUDER_0) {
+        this.rudder = Vehicle.RUDER_RIGHT_5;
+      } else if (this.rudder === Vehicle.RUDER_RIGHT_5) {
+        this.rudder = Vehicle.RUDER_RIGHT_10;
+      } else if (this.rudder === Vehicle.RUDER_RIGHT_10) {
+        this.rudder = Vehicle.RUDER_RIGHT_15;
+      }
+    }
+    
+    console.log(`Новое положение руля: ${this.rudder}`);
+    
+    // Обновляем интерфейс, если корабль под контролем
+    if (this.underControl) {
+      this.showRudder();
+    }
+  }
+  
+  /**
+   * Отображает текущее положение руля в интерфейсе
+   */
+  protected showRudder(): void {
+    // Получаем доступ к информеру через сцену как MainScene
+    const mainScene = this.scene as any;
+    const informer = mainScene.informer;
+    if (!informer) {
+      console.warn("Informer not available in showRudder");
+      return;
+    }
+    
+    console.log(`Setting rudder display to: ${this.rudder}`);
+    console.log(`Тип информера: ${typeof informer}`);
+    console.log(`Информер имеет метод setRudder: ${informer && typeof informer.setRudder === 'function'}`);
+    
+    switch (this.rudder) {
+      case Vehicle.RUDER_0:
+        console.log('Устанавливаем руль в положение 0');
+        informer.setCommand("Прямо по курсу!");
+        informer.setRudder("0");
+        break;
+        
+      case Vehicle.RUDER_LEFT_5:
+        console.log('Устанавливаем руль в положение L 5');
+        informer.setCommand("Руль 5 градусов влево.");
+        informer.setRudder("L 5");
+        break;
+        
+      case Vehicle.RUDER_LEFT_10:
+        console.log('Устанавливаем руль в положение L 10');
+        informer.setCommand("Руль 10 градусов влево.");
+        informer.setRudder("L 10");
+        break;
+        
+      case Vehicle.RUDER_LEFT_15:
+        console.log('Устанавливаем руль в положение L 15');
+        informer.setCommand("Руль 15 градусов влево.");
+        informer.setRudder("L 15");
+        break;
+        
+      case Vehicle.RUDER_RIGHT_5:
+        console.log('Устанавливаем руль в положение R 5');
+        informer.setCommand("Руль 5 градусов вправо.");
+        informer.setRudder("R 5");
+        break;
+        
+      case Vehicle.RUDER_RIGHT_10:
+        console.log('Устанавливаем руль в положение R 10');
+        informer.setCommand("Руль 10 градусов вправо.");
+        informer.setRudder("R 10");
+        break;
+        
+      case Vehicle.RUDER_RIGHT_15:
+        console.log('Устанавливаем руль в положение R 15');
+        informer.setCommand("Руль 15 градусов вправо.");
+        informer.setRudder("R 15");
+        break;
+        
+      default:
+        console.warn(`Unknown rudder value: ${this.rudder}`);
+        informer.setRudder("?");
+        break;
+    }
+  }
+  
+  /**
+   * Получает текущее положение руля
+   */
+  public getRudder(): number {
+    return this.rudder;
+  }
+} 
