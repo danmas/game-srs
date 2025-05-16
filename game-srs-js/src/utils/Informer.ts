@@ -51,10 +51,10 @@ export class Informer {
   private uiCamera: Phaser.Cameras.Scene2D.Camera | null = null;
   
   // Основные текстовые поля
-  private timeText: Phaser.GameObjects.Text | null = null;
-  private playerNameText: Phaser.GameObjects.Text | null = null;
-  private commandText: Phaser.GameObjects.Text | null = null;
-  private traceText: Phaser.GameObjects.Text | null = null;
+  public playerNameText: Phaser.GameObjects.Text | null = null;
+  public timeText: Phaser.GameObjects.Text | null = null;
+  public commandText: Phaser.GameObjects.Text | null = null;
+  public traceText: Phaser.GameObjects.Text | null = null;
   
   // Массивы полей и индикаторов
   private fields: Phaser.GameObjects.Text[] = [];
@@ -88,37 +88,27 @@ export class Informer {
   private addElementsToCamera(): void {
     if (!this.uiCamera) return;
     
-    // Контейнер для всех UI элементов
-    const uiElements: Phaser.GameObjects.GameObject[] = [];
+    // Получаем все UI элементы
+    const uiElements = this.getAllUIElements();
     
-    // Добавляем основные текстовые поля
-    if (this.playerNameText) uiElements.push(this.playerNameText);
-    if (this.timeText) uiElements.push(this.timeText);
-    if (this.commandText) uiElements.push(this.commandText);
-    if (this.traceText) uiElements.push(this.traceText);
+    // Получаем ссылку на сцену и основную камеру
+    const scene = this.scene as Phaser.Scene;
+    const gameCamera = scene.cameras.main;
     
-    // Добавляем поля и метки
-    this.labels.forEach(label => uiElements.push(label));
-    this.fields.forEach(field => uiElements.push(field));
-    this.rightLabels.forEach(label => uiElements.push(label));
-    this.rightFields.forEach(field => uiElements.push(field));
+    // Игнорируем все UI элементы в основной камере
+    if (gameCamera && gameCamera !== this.uiCamera) {
+      gameCamera.ignore(uiElements);
+    }
     
-    // Добавляем лампы
-    this.lamps.forEach(lamp => {
-      uiElements.push(lamp.sprite);
-      if (lamp.text) uiElements.push(lamp.text);
-    });
+    // Игнорируем все не-UI элементы в UI камере
+    // Получаем все объекты сцены
+    const allObjects = scene.children.list;
     
-    // Добавляем информационную панель
-    if (this.infoPanelHeader) uiElements.push(this.infoPanelHeader);
-    if (this.infoPanelText) uiElements.push(this.infoPanelText);
-    if (this.infoPanelFooter) uiElements.push(this.infoPanelFooter);
+    // Фильтруем объекты, которые не являются UI элементами
+    const nonUIObjects = allObjects.filter(obj => !uiElements.includes(obj));
     
-    // Устанавливаем, чтобы элементы отображались только в UI камере,
-    // а не в основной игровой камере
-    this.uiCamera.ignore(this.scene.children.list.filter(
-      obj => !uiElements.includes(obj)
-    ));
+    // Игнорируем их в UI камере
+    this.uiCamera.ignore(nonUIObjects);
   }
   
   /**
@@ -824,5 +814,38 @@ export class Informer {
       screenCenterX - this.infoPanelFooter.width / 2,
       this.infoPanelText.y + this.infoPanelText.height
     );
+  }
+  
+  /**
+   * Возвращает все UI элементы для правильной настройки камер
+   * @returns Массив всех UI элементов
+   */
+  public getAllUIElements(): Phaser.GameObjects.GameObject[] {
+    const uiElements: Phaser.GameObjects.GameObject[] = [];
+    
+    // Добавляем основные текстовые поля
+    if (this.playerNameText) uiElements.push(this.playerNameText);
+    if (this.timeText) uiElements.push(this.timeText);
+    if (this.commandText) uiElements.push(this.commandText);
+    if (this.traceText) uiElements.push(this.traceText);
+    
+    // Добавляем поля и метки
+    this.labels.forEach(label => uiElements.push(label));
+    this.fields.forEach(field => uiElements.push(field));
+    this.rightLabels.forEach(label => uiElements.push(label));
+    this.rightFields.forEach(field => uiElements.push(field));
+    
+    // Добавляем лампы
+    this.lamps.forEach(lamp => {
+      uiElements.push(lamp.sprite);
+      if (lamp.text) uiElements.push(lamp.text);
+    });
+    
+    // Добавляем информационную панель
+    if (this.infoPanelHeader) uiElements.push(this.infoPanelHeader);
+    if (this.infoPanelText) uiElements.push(this.infoPanelText);
+    if (this.infoPanelFooter) uiElements.push(this.infoPanelFooter);
+    
+    return uiElements;
   }
 } 

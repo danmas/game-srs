@@ -120,6 +120,9 @@ export class MainScene extends Phaser.Scene {
     
     // Инициализируем игру, но не запускаем автоматически
     this.initGame();
+    
+    // Обновляем настройки камер после создания всех объектов
+    this.updateCamerasConfig();
   }
   
   /**
@@ -130,24 +133,21 @@ export class MainScene extends Phaser.Scene {
     this.gameCamera = this.cameras.main;
     this.gameCamera.setZoom(1 / this.zoom);
     this.gameCamera.setName('gameCamera');
-    // Черный фон для главной камеры не нужен, Phaser по умолчанию использует прозрачность
+    this.gameCamera.setBackgroundColor(0x0000FF); // Устанавливаем синий фон для игровой камеры
     
     // UI камера - для интерфейса
     this.uiCamera = this.cameras.add(0, 0, Settings.SCREEN_WIDTH, Settings.SCREEN_HEIGHT);
     this.uiCamera.setName('uiCamera');
     this.uiCamera.setScroll(0, 0); // UI всегда отображается от (0,0)
-    this.uiCamera.transparent = true; // Прозрачный фон
+    this.uiCamera.transparent = true; // Прозрачный фон для UI камеры
     this.uiCamera.setZoom(1); // Не масштабировать UI
-    
-    // При создании UI камеры НЕ игнорируем остальные объекты,
-    // иначе игровое поле не будет отображаться
   }
   
   /**
    * Создает игровую зону и фон
    */
   private createGameArea(): void {
-    // Создаем внешний темно-серый фон
+    // Создаем внешний темно-серый фон (видимый только при отдалении)
     const worldBg = this.add.rectangle(
       Settings.SCREEN_WIDTH / 2, 
       Settings.SCREEN_HEIGHT / 2,
@@ -157,22 +157,17 @@ export class MainScene extends Phaser.Scene {
     );
     worldBg.setDepth(-100); // Ставим ниже всех объектов
     
-    // Создаем внутреннюю игровую зону (используем яркий синий цвет)
-    const gameArea = this.add.rectangle(
-      Settings.SCREEN_WIDTH / 2, 
-      Settings.SCREEN_HEIGHT / 2,
-      Settings.SCREEN_WIDTH, 
-      Settings.SCREEN_HEIGHT,
-      0x0000FF // Яркий синий цвет (классическое значение RGB)
-    );
-    gameArea.setDepth(-99); // Выше фона, но ниже игровых объектов
-    gameArea.setAlpha(1); // Обеспечиваем полную непрозрачность
-    
-    // Добавляем границу вокруг игровой зоны
+    // Создаем внутреннюю игровую зону (синий цвет не нужен, так как фон камеры уже синий)
+    // Вместо этого создаем только белую границу
     const border = this.add.graphics();
     border.lineStyle(4, 0xFFFFFF, 0.8); // Белая граница
     border.strokeRect(0, 0, Settings.SCREEN_WIDTH, Settings.SCREEN_HEIGHT);
     border.setDepth(-98); // Выше игровой зоны
+    
+    // Фоновые элементы должны видеться только в gameCamera, не в uiCamera
+    if (this.uiCamera) {
+      this.uiCamera.ignore([worldBg, border]);
+    }
   }
   
   /**
@@ -1231,16 +1226,55 @@ export class MainScene extends Phaser.Scene {
    */
   private updateCameraZoom(): void {
     // Устанавливаем масштаб ТОЛЬКО для основной камеры
-    // UI камера должна оставаться с зумом 1
     if (this.gameCamera) {
       this.gameCamera.setZoom(1 / this.zoom);
+      console.log(`Масштаб игровой камеры установлен: ${1 / this.zoom}`);
     }
     
-    // UI камера не масштабируется
+    // UI камера всегда с фиксированным масштабом 1
     if (this.uiCamera) {
       this.uiCamera.setZoom(1);
     }
     
-    console.log(`Масштаб камеры установлен: ${1 / this.zoom}`);
+    // Обновляем настройки камер после изменения масштаба
+    this.updateCamerasConfig();
+  }
+  
+  /**
+   * Обновляет настройки камер и прикрепление объектов к ним
+   */
+  private updateCamerasConfig(): void {
+    if (!this.gameCamera || !this.uiCamera) return;
+    
+    // Получаем все объекты сцены
+    const allObjects = this.children.list;
+    
+    // Получаем UI элементы из Informer
+    const uiElements: Phaser.GameObjects.GameObject[] = [];
+    
+    // Если у нас есть Informer, получаем все его UI элементы
+    if (this.informer) {
+      const informerElements = this.informer.getAllUIElements();
+      uiElements.push(...informerElements);
+    }
+    
+    // Добавляем версию игры (текст в верхнем углу)
+    const versionText = allObjects.find(obj => 
+      obj instanceof Phaser.GameObjects.Text && 
+      (obj as Phaser.GameObjects.Text).text === Settings.CURRENT_SRS
+    );
+    
+    if (versionText) {
+      uiElements.push(versionText);
+    }
+    
+    // Игнорируем все UI элементы в основной камере
+    this.gameCamera.ignore(uiElements);
+    
+    // Игнорируем все не-UI элементы в UI камере
+    const gameObjects = allObjects.filter(obj => !uiElements.includes(obj));
+    this.uiCamera.ignore(gameObjects);
+    
+    console.log(`Настроены камеры: UI элементов - ${uiElements.length}, игровых объектов - ${gameObjects.length}`);
   }
 } 
