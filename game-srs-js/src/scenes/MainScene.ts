@@ -44,6 +44,10 @@ export class MainScene extends Phaser.Scene {
   private timeLastSlowLoop: number = 0;
   private inputTextState: number = MainScene.ST_UNKNOWN;
   
+  // Камеры
+  private gameCamera: Phaser.Cameras.Scene2D.Camera | null = null;
+  private uiCamera: Phaser.Cameras.Scene2D.Camera | null = null;
+  
   // Защита от слишком частых нажатий клавиш
   private lastKeyPressTime: number = 0;
   private keyPressDelay: number = 300; // ms
@@ -80,8 +84,11 @@ export class MainScene extends Phaser.Scene {
    * Создание объектов сцены
    */
   create(): void {
-    // Инициализируем основную камеру
-    this.cameras.main.setZoom(1 / this.zoom);
+    // Создаем камеры для игры и UI
+    this.setupCameras();
+    
+    // Создаем графические элементы игровой зоны
+    this.createGameArea();
     
     // Добавляем обработчики ввода
     const input = this.input as Phaser.Input.InputPlugin;
@@ -99,7 +106,11 @@ export class MainScene extends Phaser.Scene {
     
     // Создаем информационную панель
     this.informer = new Informer(this);
-    this.informer.setPlayerName("Player 1");
+    // Устанавливаем камеру для отображения UI
+    if (this.informer && this.uiCamera) {
+      this.informer.setCamera(this.uiCamera);
+    }
+    this.informer?.setPlayerName("Player 1");
     
     // Создаем менеджер сценариев
     this.scenarioManager = new ScenarioManager(this);
@@ -109,6 +120,59 @@ export class MainScene extends Phaser.Scene {
     
     // Инициализируем игру, но не запускаем автоматически
     this.initGame();
+  }
+  
+  /**
+   * Настраивает камеры для игры и UI
+   */
+  private setupCameras(): void {
+    // Основная камера - для игрового мира
+    this.gameCamera = this.cameras.main;
+    this.gameCamera.setZoom(1 / this.zoom);
+    this.gameCamera.setName('gameCamera');
+    // Черный фон для главной камеры не нужен, Phaser по умолчанию использует прозрачность
+    
+    // UI камера - для интерфейса
+    this.uiCamera = this.cameras.add(0, 0, Settings.SCREEN_WIDTH, Settings.SCREEN_HEIGHT);
+    this.uiCamera.setName('uiCamera');
+    this.uiCamera.setScroll(0, 0); // UI всегда отображается от (0,0)
+    this.uiCamera.transparent = true; // Прозрачный фон
+    this.uiCamera.setZoom(1); // Не масштабировать UI
+    
+    // При создании UI камеры НЕ игнорируем остальные объекты,
+    // иначе игровое поле не будет отображаться
+  }
+  
+  /**
+   * Создает игровую зону и фон
+   */
+  private createGameArea(): void {
+    // Создаем внешний темно-серый фон
+    const worldBg = this.add.rectangle(
+      Settings.SCREEN_WIDTH / 2, 
+      Settings.SCREEN_HEIGHT / 2,
+      Settings.SCREEN_WIDTH * 10, // Большой прямоугольник для заполнения всего поля видимости
+      Settings.SCREEN_HEIGHT * 10,
+      0x333333 // Темно-серый цвет
+    );
+    worldBg.setDepth(-100); // Ставим ниже всех объектов
+    
+    // Создаем внутреннюю игровую зону (используем яркий синий цвет)
+    const gameArea = this.add.rectangle(
+      Settings.SCREEN_WIDTH / 2, 
+      Settings.SCREEN_HEIGHT / 2,
+      Settings.SCREEN_WIDTH, 
+      Settings.SCREEN_HEIGHT,
+      0x0000FF // Яркий синий цвет (классическое значение RGB)
+    );
+    gameArea.setDepth(-99); // Выше фона, но ниже игровых объектов
+    gameArea.setAlpha(1); // Обеспечиваем полную непрозрачность
+    
+    // Добавляем границу вокруг игровой зоны
+    const border = this.add.graphics();
+    border.lineStyle(4, 0xFFFFFF, 0.8); // Белая граница
+    border.strokeRect(0, 0, Settings.SCREEN_WIDTH, Settings.SCREEN_HEIGHT);
+    border.setDepth(-98); // Выше игровой зоны
   }
   
   /**
@@ -1093,10 +1157,6 @@ export class MainScene extends Phaser.Scene {
    * Увеличивает масштаб (приближение)
    */
   private increaseZoom(): void {
-    // Сохраняем текущий центр экрана
-    const centerX = this.cameras.main.width / 2;
-    const centerY = this.cameras.main.height / 2;
-    
     // Уменьшаем значение зума (что делает объекты крупнее)
     this.zoom *= 0.5;
     
@@ -1108,9 +1168,10 @@ export class MainScene extends Phaser.Scene {
       }
     }
     
-    // Обновляем зум и центр камеры
+    // Обновляем зум камеры
     this.updateCameraZoom();
     
+    // Обновляем индикатор зума
     if (this.informer) {
       this.informer.setZoom(this.zoom);
       this.informer.setCommand(`Масштаб: ${this.zoom.toFixed(2)}`);
@@ -1123,10 +1184,6 @@ export class MainScene extends Phaser.Scene {
    * Уменьшает масштаб (отдаление)
    */
   private decreaseZoom(): void {
-    // Сохраняем текущий центр экрана
-    const centerX = this.cameras.main.width / 2;
-    const centerY = this.cameras.main.height / 2;
-    
     // Увеличиваем значение зума (что делает объекты мельче)
     this.zoom /= 0.5;
     
@@ -1138,9 +1195,10 @@ export class MainScene extends Phaser.Scene {
       }
     }
     
-    // Обновляем зум и центр камеры
+    // Обновляем зум камеры
     this.updateCameraZoom();
     
+    // Обновляем индикатор зума
     if (this.informer) {
       this.informer.setZoom(this.zoom);
       this.informer.setCommand(`Масштаб: ${this.zoom.toFixed(2)}`);
@@ -1172,8 +1230,16 @@ export class MainScene extends Phaser.Scene {
    * Обновляет масштаб камеры и настройки отображения
    */
   private updateCameraZoom(): void {
-    // Устанавливаем масштаб камеры
-    this.cameras.main.setZoom(1 / this.zoom);
+    // Устанавливаем масштаб ТОЛЬКО для основной камеры
+    // UI камера должна оставаться с зумом 1
+    if (this.gameCamera) {
+      this.gameCamera.setZoom(1 / this.zoom);
+    }
+    
+    // UI камера не масштабируется
+    if (this.uiCamera) {
+      this.uiCamera.setZoom(1);
+    }
     
     console.log(`Масштаб камеры установлен: ${1 / this.zoom}`);
   }

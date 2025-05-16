@@ -47,6 +47,9 @@ export class Informer {
   // Ссылка на сцену
   private scene: Phaser.Scene;
   
+  // Камера для отображения UI
+  private uiCamera: Phaser.Cameras.Scene2D.Camera | null = null;
+  
   // Основные текстовые поля
   private timeText: Phaser.GameObjects.Text | null = null;
   private playerNameText: Phaser.GameObjects.Text | null = null;
@@ -69,6 +72,56 @@ export class Informer {
   private msgCount: number = 1;
   
   /**
+   * Устанавливает камеру для отображения UI
+   * @param camera Камера для UI-элементов
+   */
+  public setCamera(camera: Phaser.Cameras.Scene2D.Camera): void {
+    this.uiCamera = camera;
+    
+    // Добавляем все существующие элементы UI в камеру
+    this.addElementsToCamera();
+  }
+  
+  /**
+   * Добавляет все UI элементы в UI камеру
+   */
+  private addElementsToCamera(): void {
+    if (!this.uiCamera) return;
+    
+    // Контейнер для всех UI элементов
+    const uiElements: Phaser.GameObjects.GameObject[] = [];
+    
+    // Добавляем основные текстовые поля
+    if (this.playerNameText) uiElements.push(this.playerNameText);
+    if (this.timeText) uiElements.push(this.timeText);
+    if (this.commandText) uiElements.push(this.commandText);
+    if (this.traceText) uiElements.push(this.traceText);
+    
+    // Добавляем поля и метки
+    this.labels.forEach(label => uiElements.push(label));
+    this.fields.forEach(field => uiElements.push(field));
+    this.rightLabels.forEach(label => uiElements.push(label));
+    this.rightFields.forEach(field => uiElements.push(field));
+    
+    // Добавляем лампы
+    this.lamps.forEach(lamp => {
+      uiElements.push(lamp.sprite);
+      if (lamp.text) uiElements.push(lamp.text);
+    });
+    
+    // Добавляем информационную панель
+    if (this.infoPanelHeader) uiElements.push(this.infoPanelHeader);
+    if (this.infoPanelText) uiElements.push(this.infoPanelText);
+    if (this.infoPanelFooter) uiElements.push(this.infoPanelFooter);
+    
+    // Устанавливаем, чтобы элементы отображались только в UI камере,
+    // а не в основной игровой камере
+    this.uiCamera.ignore(this.scene.children.list.filter(
+      obj => !uiElements.includes(obj)
+    ));
+  }
+  
+  /**
    * Конструктор
    * @param scene Сцена, на которой размещается интерфейс
    */
@@ -85,6 +138,8 @@ export class Informer {
     });
     this.playerNameText.setFixedSize(this.LBL_WIDTH + this.FIELD_WIDTH + 2, this.FIELD_HEIGHT);
     this.playerNameText.setAlpha(this.FIELD_ALPHA);
+    this.playerNameText.setScrollFactor(0);
+    this.playerNameText.setDepth(100);
     
     // Создаем поле с временем
     this.timeText = scene.add.text(0, this.playerNameText.y + this.playerNameText.height, '', {
@@ -96,6 +151,8 @@ export class Informer {
     });
     this.timeText.setFixedSize(this.LBL_WIDTH + this.FIELD_WIDTH + 2, this.FIELD_HEIGHT);
     this.timeText.setAlpha(this.FIELD_ALPHA);
+    this.timeText.setScrollFactor(0);
+    this.timeText.setDepth(100);
     
     // Создаем поля основных параметров
     for (let j = 0; j < this.NUMB_FIELDS; j++) {
@@ -109,6 +166,8 @@ export class Informer {
       });
       label.setFixedSize(this.LBL_WIDTH, this.FIELD_HEIGHT);
       label.setAlpha(this.FIELD_ALPHA);
+      label.setScrollFactor(0);
+      label.setDepth(100);
       this.labels.push(label);
       
       // Значение
@@ -126,6 +185,8 @@ export class Informer {
       );
       field.setFixedSize(this.FIELD_WIDTH, this.FIELD_HEIGHT);
       field.setAlpha(this.FIELD_ALPHA);
+      field.setScrollFactor(0);
+      field.setDepth(100);
       this.fields.push(field);
     }
     
@@ -140,15 +201,7 @@ export class Informer {
     this.fields[this.RUD].setText('0');
     
     // Создаем командную строку
-    this.commandText = scene.add.text(200, Settings.SCREEN_HEIGHT - this.COMMAND_HEIGHT, '', {
-      fontSize: `${this.FIELD_TEXT_SIZE}px`,
-      fontFamily: 'Courier',
-      color: this.FIELD_TEXT_COLOR,
-      backgroundColor: this.FIELD_TEXT_BGCOLOR,
-      padding: { left: 5, right: 5, top: 2, bottom: 2 }
-    });
-    this.commandText.setFixedSize(this.COMMAND_WIDTH, this.COMMAND_HEIGHT);
-    this.commandText.setAlpha(this.FIELD_ALPHA);
+    this.setupCommandText();
     
     // Создаем индикаторы (лампы)
     this.panelLampSet(1, Constants.LAMP_TRPRD_I, Constants.LAMP_TRPRD_I, false);
@@ -160,6 +213,23 @@ export class Informer {
     
     // Подготавливаем панель конца игры
     this.prepareGameOver();
+  }
+  
+  /**
+   * Создает командную строку
+   */
+  private setupCommandText(): void {
+    this.commandText = this.scene.add.text(200, Settings.SCREEN_HEIGHT - this.COMMAND_HEIGHT, '', {
+      fontSize: `${this.FIELD_TEXT_SIZE}px`,
+      fontFamily: 'Courier',
+      color: this.FIELD_TEXT_COLOR,
+      backgroundColor: this.FIELD_TEXT_BGCOLOR,
+      padding: { left: 5, right: 5, top: 2, bottom: 2 }
+    });
+    this.commandText.setFixedSize(this.COMMAND_WIDTH, this.COMMAND_HEIGHT);
+    this.commandText.setAlpha(this.FIELD_ALPHA);
+    this.commandText.setScrollFactor(0); // Фиксирует положение при скролле
+    this.commandText.setDepth(100); // Высокое значение глубины, чтобы отображать поверх всего
   }
   
   /**
@@ -234,46 +304,43 @@ export class Informer {
   }
   
   /**
-   * Подготавливает панель конца игры
+   * Подготавливает панель информации о конце игры
    */
   public prepareGameOver(): void {
-    // Заголовок панели
-    this.infoPanelHeader = this.scene.add.text(10, 10, '', {
-      fontSize: '30px',
-      fontFamily: 'sans-serif',
-      color: '#FF4500',
-      backgroundColor: '#FFFF00',
+    // Заголовок
+    this.infoPanelHeader = this.scene.add.text(0, 0, '', {
+      fontSize: '24px',
+      fontFamily: 'Arial',
+      color: '#ffffff',
+      backgroundColor: '#000000',
       padding: { left: 10, right: 10, top: 5, bottom: 5 }
     });
-    this.infoPanelHeader.setFixedSize(Settings.SCREEN_WIDTH - 20, 50);
-    this.infoPanelHeader.setAlpha(0.9);
-    this.infoPanelHeader.setAlign('center');
+    this.infoPanelHeader.setScrollFactor(0);
+    this.infoPanelHeader.setDepth(100);
     this.infoPanelHeader.setVisible(false);
     
     // Основной текст
-    this.infoPanelText = this.scene.add.text(10, 10 + 50 + 2, '', {
-      fontSize: '20px',
-      fontFamily: 'Courier',
-      color: '#FF0000',
-      backgroundColor: '#FFFF00',
+    this.infoPanelText = this.scene.add.text(0, 0, '', {
+      fontSize: '18px',
+      fontFamily: 'Arial',
+      color: '#ffffff',
+      backgroundColor: '#000000',
       padding: { left: 10, right: 10, top: 5, bottom: 5 }
     });
-    this.infoPanelText.setFixedSize(Settings.SCREEN_WIDTH - 20, Settings.SCREEN_HEIGHT - (50 + 2 + 50 + 10 + 10 + 2));
-    this.infoPanelText.setAlpha(0.9);
-    this.infoPanelText.setWordWrapWidth(Settings.SCREEN_WIDTH - 40);
+    this.infoPanelText.setScrollFactor(0);
+    this.infoPanelText.setDepth(100);
     this.infoPanelText.setVisible(false);
     
-    // Подвал панели
-    this.infoPanelFooter = this.scene.add.text(10, this.infoPanelText.y + this.infoPanelText.height + 2, '', {
-      fontSize: '30px',
-      fontFamily: 'sans-serif',
-      color: '#FF4500',
-      backgroundColor: '#FFFF00',
+    // Нижняя часть (footer)
+    this.infoPanelFooter = this.scene.add.text(0, 0, '', {
+      fontSize: '18px',
+      fontFamily: 'Arial',
+      color: '#ffffff',
+      backgroundColor: '#000000',
       padding: { left: 10, right: 10, top: 5, bottom: 5 }
     });
-    this.infoPanelFooter.setFixedSize(Settings.SCREEN_WIDTH - 20, 50);
-    this.infoPanelFooter.setAlpha(0.9);
-    this.infoPanelFooter.setAlign('center');
+    this.infoPanelFooter.setScrollFactor(0);
+    this.infoPanelFooter.setDepth(100);
     this.infoPanelFooter.setVisible(false);
   }
   
@@ -281,10 +348,11 @@ export class Informer {
    * Показывает информационную панель
    * @param header Заголовок
    * @param txt Текст
-   * @param footer Подвал
+   * @param footer Нижняя часть
    */
   public showInfoPanel(header: string, txt: string, footer: string): void {
     this.setTextPanel(header, txt, footer);
+    
     if (this.infoPanelHeader) this.infoPanelHeader.setVisible(true);
     if (this.infoPanelText) this.infoPanelText.setVisible(true);
     if (this.infoPanelFooter) this.infoPanelFooter.setVisible(true);
@@ -523,68 +591,61 @@ export class Informer {
   }
   
   /**
-   * Создает или обновляет индикатор
-   * @param num Номер позиции индикатора
-   * @param lampName Имя индикатора
-   * @param text Отображаемый текст
-   * @param on Начальное состояние
+   * Создает индикатор (лампу)
+   * @param num Номер лампы
+   * @param lampName Имя лампы
+   * @param text Текст лампы
+   * @param on Начальное состояние (вкл/выкл)
    */
   public panelLampSet(num: number, lampName: string, text: string, on: boolean): void {
-    // Ищем существующий индикатор
-    const existingLamp = this.getPanelLamp(lampName);
+    // Текстура и цвет в зависимости от состояния
+    const textureName = 'lamp_' + (on ? 'on' : 'off');
+    const color = on ? '#00FF00' : '#FF0000';
     
-    if (!existingLamp) {
-      // Рассчитываем позицию для нового индикатора
-      let x = 0;
-      let y = 0;
-      
-      // Вычисляем положение в сетке 2x4
-      if (num === 1) {
-        x = 0;
-        y = 5 + (this.fields.length > 0 ? this.fields[this.fields.length - 1].y + this.FIELD_HEIGHT : 0);
-      } else if (num === 2) {
-        x = (this.LBL_WIDTH + this.FIELD_WIDTH) / 2;
-        y = 5 + (this.fields.length > 0 ? this.fields[this.fields.length - 1].y + this.FIELD_HEIGHT : 0);
-      } else if (num === 3) {
-        x = 0;
-        y = 5 + (this.fields.length > 0 ? this.fields[this.fields.length - 1].y + 2 * this.FIELD_HEIGHT : 0);
-      } else if (num === 4) {
-        x = (this.LBL_WIDTH + this.FIELD_WIDTH) / 2;
-        y = 5 + (this.fields.length > 0 ? this.fields[this.fields.length - 1].y + 2 * this.FIELD_HEIGHT : 0);
-      } else if (num === 5) {
-        x = 0;
-        y = 5 + (this.fields.length > 0 ? this.fields[this.fields.length - 1].y + 3 * this.FIELD_HEIGHT : 0);
-      } else if (num === 6) {
-        x = (this.LBL_WIDTH + this.FIELD_WIDTH) / 2;
-        y = 5 + (this.fields.length > 0 ? this.fields[this.fields.length - 1].y + 3 * this.FIELD_HEIGHT : 0);
-      } else if (num === 7) {
-        x = 0;
-        y = 5 + (this.fields.length > 0 ? this.fields[this.fields.length - 1].y + 4 * this.FIELD_HEIGHT : 0);
-      } else if (num === 8) {
-        x = (this.LBL_WIDTH + this.FIELD_WIDTH) / 2;
-        y = 5 + (this.fields.length > 0 ? this.fields[this.fields.length - 1].y + 4 * this.FIELD_HEIGHT : 0);
-      }
-      
-      // Создаем индикатор
-      const lamp = new Lamp(this.scene, x, y, lampName, text);
-      lamp.setFixedSize((this.LBL_WIDTH + this.FIELD_WIDTH + 2) / 2, this.FIELD_HEIGHT);
-      this.lamps.push(lamp);
-      
-      // Устанавливаем начальное состояние
-      if (on) {
-        lamp.setOn();
-      } else {
-        lamp.setOff();
-      }
-    } else {
-      // Обновляем существующий индикатор
-      existingLamp.setText(text);
-      if (on) {
-        existingLamp.setOn();
-      } else {
-        existingLamp.setOff();
-      }
+    // Вычисляем координаты
+    const x = Settings.SCREEN_WIDTH - 130;
+    const y = 15 + (num - 1) * 30;
+    
+    // Проверяем, существует ли уже такая лампа
+    const existingLamp = this.getPanelLamp(lampName);
+    if (existingLamp) {
+      existingLamp.setState(on);
+      return;
     }
+    
+    // Создаем графику для лампы
+    const graphics = this.scene.add.graphics();
+    graphics.fillStyle(on ? 0x00FF00 : 0xFF0000, 1);
+    graphics.fillCircle(10, 10, 10);
+    graphics.lineStyle(2, 0xFFFFFF, 1);
+    graphics.strokeCircle(10, 10, 10);
+    
+    // Генерируем текстуру для лампы
+    if (!this.scene.textures.exists(textureName)) {
+      graphics.generateTexture(textureName, 20, 20);
+    }
+    
+    graphics.destroy();
+    
+    // Создаем спрайт лампы
+    const sprite = this.scene.add.sprite(x, y, textureName);
+    
+    // Создаем текст для лампы
+    const txt = this.scene.add.text(x + 15, y - 10, text, {
+      fontFamily: 'Courier',
+      fontSize: '16px',
+      color: color
+    });
+    
+    // Фиксируем позицию при скролле
+    sprite.setScrollFactor(0);
+    sprite.setDepth(100);
+    txt.setScrollFactor(0);
+    txt.setDepth(100);
+    
+    // Создаем и сохраняем объект лампы
+    const lamp = new Lamp(lampName, sprite, txt);
+    this.lamps.push(lamp);
   }
   
   /**
@@ -630,31 +691,43 @@ export class Informer {
   }
   
   /**
-   * Добавляет текст в лог
-   * @param val Текст сообщения
+   * Создает текстовое поле для отладочной информации
    */
   public writeText(val: string): void {
-    val = `${this.msgCount++}: ${val}`;
-    
-    // Создаем текстовое поле, если его нет
+    // Создаем текстовый объект, если он еще не существует
     if (!this.traceText) {
-      this.traceText = this.scene.add.text(0, 0, val, {
-        fontSize: `${this.TF_FIELD_TEXT_SIZE - 2}px`,
-        fontFamily: 'Segoe',
-        color: this.TF_FIELD_TEXT_COLOR,
-        backgroundColor: this.TF_FIELD_TEXT_BGCOLOR,
-        padding: { left: 5, right: 5, top: 2, bottom: 2 }
-      });
+      const offsetY = this.fields.length > 0 ? 
+                     this.fields[this.fields.length - 1].y + this.fields[this.fields.length - 1].height + 5 : 10;
+      
+      this.traceText = this.scene.add.text(
+        5, 
+        offsetY,
+        '',
+        {
+          fontSize: `${this.TF_FIELD_TEXT_SIZE}px`,
+          fontFamily: 'Courier',
+          color: this.TF_FIELD_TEXT_COLOR,
+          backgroundColor: this.TF_FIELD_TEXT_BGCOLOR,
+          padding: { left: 5, right: 5, top: 5, bottom: 5 },
+          wordWrap: { width: this.TF_FIELD_WIDTH - 10 }
+        }
+      );
       this.traceText.setFixedSize(this.TF_FIELD_WIDTH, this.TF_FIELD_HEIGHT);
       this.traceText.setAlpha(this.TF_FIELD_ALPHA);
-      this.traceText.setWordWrapWidth(this.TF_FIELD_WIDTH - 10);
-      
-      // Устанавливаем позицию справа внизу
-      this.traceText.setX(Settings.SCREEN_WIDTH - this.traceText.width - 2);
-      this.traceText.setY(Settings.SCREEN_HEIGHT - this.traceText.height - 2);
+      this.traceText.setScrollFactor(0);
+      this.traceText.setDepth(100);
+    }
+    
+    // Добавляем новое сообщение с номером
+    const traceMsg = `${this.msgCount++}: ${val}\n${this.traceText.text}`;
+    
+    // Ограничиваем количество строк в тексте
+    const lines = traceMsg.split('\n');
+    if (lines.length > 10) {
+      // Если больше 10 строк, оставляем только последние 10
+      this.traceText.setText(lines.slice(0, 10).join('\n'));
     } else {
-      // Добавляем текст в начало (для эффекта прокрутки)
-      this.traceText.setText(`${val}\n${this.traceText.text}`);
+      this.traceText.setText(traceMsg);
     }
   }
   
@@ -722,14 +795,34 @@ export class Informer {
   }
   
   /**
-   * Устанавливает текст информационной панели
-   * @param header Заголовок
-   * @param txt Основной текст
-   * @param footer Подвал
+   * Устанавливает текст в информационной панели
    */
   private setTextPanel(header: string, txt: string, footer: string): void {
-    if (this.infoPanelHeader) this.infoPanelHeader.setText(header);
-    if (this.infoPanelText) this.infoPanelText.setText(txt);
-    if (this.infoPanelFooter) this.infoPanelFooter.setText(footer);
+    if (!this.infoPanelHeader || !this.infoPanelText || !this.infoPanelFooter) return;
+    
+    // Устанавливаем тексты
+    this.infoPanelHeader.setText(header);
+    this.infoPanelText.setText(txt);
+    this.infoPanelFooter.setText(footer);
+    
+    // Рассчитываем позиции для центрирования
+    const screenCenterX = Settings.SCREEN_WIDTH / 2;
+    const screenCenterY = Settings.SCREEN_HEIGHT / 2;
+    
+    // Позиционируем элементы
+    this.infoPanelHeader.setPosition(
+      screenCenterX - this.infoPanelHeader.width / 2,
+      screenCenterY - this.infoPanelHeader.height - this.infoPanelText.height / 2
+    );
+    
+    this.infoPanelText.setPosition(
+      screenCenterX - this.infoPanelText.width / 2,
+      this.infoPanelHeader.y + this.infoPanelHeader.height
+    );
+    
+    this.infoPanelFooter.setPosition(
+      screenCenterX - this.infoPanelFooter.width / 2,
+      this.infoPanelText.y + this.infoPanelText.height
+    );
   }
 } 

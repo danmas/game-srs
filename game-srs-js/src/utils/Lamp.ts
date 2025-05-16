@@ -11,76 +11,52 @@ export class Lamp {
   private static readonly ST_BLINK_WARNING: number = 2;
   
   // Цвета состояний
-  private colorOff: number = Constants.COLOR_DARK_GRAY;
-  private colorOn: number = Constants.COLOR_WHITE;
-  private colorNotReady: number = Constants.COLOR_LIGHT_GRY;
-  private colorReady: number = Constants.COLOR_LIGHT_GREEN;
-  private colorActive: number = Constants.COLOR_LIGHT_YELLOW;
-  private colorAlarm: number = Constants.COLOR_LIGHT_RED;
-  private colorWarning: number = Constants.COLOR_LIGHT_YELLOW;
-  private colorBlinkAlarm: number = Constants.COLOR_LIGHT_RED;
-  private colorBlinkWarning: number = Constants.COLOR_LIGHT_YELLOW;
+  private colorOff: number = 0xFF0000; // Красный для выключенного
+  private colorOn: number = 0x00FF00;  // Зеленый для включенного
+  private colorNotReady: number = 0xFF0000; // Красный для не готового
+  private colorReady: number = 0x00FF00;    // Зеленый для готового
+  private colorActive: number = 0xFFFF00;   // Желтый для активного
+  private colorAlarm: number = 0xFF0000;    // Красный для тревоги
+  private colorWarning: number = 0xFFFF00;  // Желтый для предупреждения
+  private colorBlinkAlarm: number = 0xFF0000;    // Красный для мигающей тревоги
+  private colorBlinkWarning: number = 0xFFFF00;  // Желтый для мигающего предупреждения
   
-  // Текстовый объект для отображения
-  private textObject: Phaser.GameObjects.Text;
+  // Объекты отображения
+  public sprite: Phaser.GameObjects.Sprite;
+  public text: Phaser.GameObjects.Text | null;
   
   // Переменные для отслеживания состояния
   private timeLast: number = 0;
   private blinkState: number = Lamp.ST_NOT_BLINK;
+  private currentState: boolean = false; // true = on, false = off
   
   // Публичное имя лампы
   public name: string = '';
   
   /**
    * Конструктор
-   * @param scene Сцена, на которой размещается индикатор
-   * @param x Позиция X
-   * @param y Позиция Y
    * @param name Внутреннее имя индикатора
-   * @param displayText Отображаемый текст
+   * @param sprite Спрайт индикатора
+   * @param text Текстовый объект индикатора (опционально)
    */
-  constructor(scene: Phaser.Scene, x: number, y: number, name: string, displayText: string) {
+  constructor(name: string, sprite: Phaser.GameObjects.Sprite, text?: Phaser.GameObjects.Text) {
     this.name = name;
-    
-    // Создаем текстовый объект
-    this.textObject = scene.add.text(x, y, displayText, {
-      fontSize: '16px',
-      fontFamily: 'Courier',
-      color: '#000000',
-      backgroundColor: '#828282',
-      padding: {
-        left: 5,
-        right: 5,
-        top: 2,
-        bottom: 2
-      }
-    });
-    
-    // Настраиваем стиль индикатора
-    this.textObject.setBackgroundColor('#828282');
-    this.textObject.setPadding(5);
-    this.textObject.setFixedSize(60, 22);
-    this.textObject.setAlign('center');
-    
-    // Добавляем интерактивность для возможного будущего использования
-    this.textObject.setInteractive({ useHandCursor: true });
+    this.sprite = sprite;
+    this.text = text || null;
   }
   
   /**
-   * Устанавливает пользовательские цвета для индикатора
+   * Устанавливает состояние индикатора
+   * @param on Состояние включения (true/false)
    */
-  public setColors(
-    colorOff: number = Constants.COLOR_DARK_GRAY,
-    colorOn: number = Constants.COLOR_WHITE,
-    colorNotReady: number = Constants.COLOR_LIGHT_RED,
-    colorReady: number = Constants.COLOR_LIGHT_GREEN,
-    colorActive: number = Constants.COLOR_LIGHT_YELLOW
-  ): void {
-    this.colorOff = colorOff;
-    this.colorOn = colorOn;
-    this.colorNotReady = colorNotReady;
-    this.colorReady = colorReady;
-    this.colorActive = colorActive;
+  public setState(on: boolean): void {
+    this.currentState = on;
+    
+    if (on) {
+      this.setOn();
+    } else {
+      this.setOff();
+    }
   }
   
   /**
@@ -90,10 +66,12 @@ export class Lamp {
   public blinkAlarmWarning(time: number): void {
     if ((time - this.timeLast) > 300) { // 0.3 секунды в миллисекундах
       if (this.blinkState === Lamp.ST_BLINK_ALARM) {
-        this.textObject.setBackgroundColor(this.convertColorToString(this.colorBlinkWarning));
+        this.sprite.setTint(this.colorBlinkWarning);
+        if (this.text) this.text.setColor('#' + this.colorBlinkWarning.toString(16).padStart(6, '0'));
         this.blinkState = Lamp.ST_BLINK_WARNING;
       } else if (this.blinkState === Lamp.ST_BLINK_WARNING) {
-        this.textObject.setBackgroundColor(this.convertColorToString(this.colorBlinkAlarm));
+        this.sprite.setTint(this.colorBlinkAlarm);
+        if (this.text) this.text.setColor('#' + this.colorBlinkAlarm.toString(16).padStart(6, '0'));
         this.blinkState = Lamp.ST_BLINK_ALARM;
       } else {
         this.blinkState = Lamp.ST_NOT_BLINK;
@@ -114,7 +92,8 @@ export class Lamp {
    */
   public startBlinkAlarmWarning(): void {
     if (this.blinkState !== Lamp.ST_BLINK_ALARM && this.blinkState !== Lamp.ST_BLINK_WARNING) {
-      this.textObject.setBackgroundColor(this.convertColorToString(this.colorBlinkAlarm));
+      this.sprite.setTint(this.colorBlinkAlarm);
+      if (this.text) this.text.setColor('#' + this.colorBlinkAlarm.toString(16).padStart(6, '0'));
       this.blinkState = Lamp.ST_BLINK_ALARM;
     }
   }
@@ -125,7 +104,7 @@ export class Lamp {
    */
   public setOnOff(on: boolean): void {
     this.stopBlinkAlarmWarning();
-    this.textObject.setBackgroundColor(this.convertColorToString(this.colorOff));
+    this.setState(on);
   }
   
   /**
@@ -133,7 +112,8 @@ export class Lamp {
    */
   public setAlarm(): void {
     this.stopBlinkAlarmWarning();
-    this.textObject.setBackgroundColor(this.convertColorToString(this.colorAlarm));
+    this.sprite.setTint(this.colorAlarm);
+    if (this.text) this.text.setColor('#' + this.colorAlarm.toString(16).padStart(6, '0'));
   }
   
   /**
@@ -141,7 +121,8 @@ export class Lamp {
    */
   public setOn(): void {
     this.stopBlinkAlarmWarning();
-    this.textObject.setBackgroundColor(this.convertColorToString(this.colorOn));
+    this.sprite.setTint(this.colorOn);
+    if (this.text) this.text.setColor('#' + this.colorOn.toString(16).padStart(6, '0'));
   }
   
   /**
@@ -149,7 +130,8 @@ export class Lamp {
    */
   public setOff(): void {
     this.stopBlinkAlarmWarning();
-    this.textObject.setBackgroundColor(this.convertColorToString(this.colorOff));
+    this.sprite.setTint(this.colorOff);
+    if (this.text) this.text.setColor('#' + this.colorOff.toString(16).padStart(6, '0'));
   }
   
   /**
@@ -157,7 +139,8 @@ export class Lamp {
    */
   public setReady(): void {
     this.stopBlinkAlarmWarning();
-    this.textObject.setBackgroundColor(this.convertColorToString(this.colorReady));
+    this.sprite.setTint(this.colorReady);
+    if (this.text) this.text.setColor('#' + this.colorReady.toString(16).padStart(6, '0'));
   }
   
   /**
@@ -165,7 +148,8 @@ export class Lamp {
    */
   public setNotReady(): void {
     this.stopBlinkAlarmWarning();
-    this.textObject.setBackgroundColor(this.convertColorToString(this.colorNotReady));
+    this.sprite.setTint(this.colorNotReady);
+    if (this.text) this.text.setColor('#' + this.colorNotReady.toString(16).padStart(6, '0'));
   }
   
   /**
@@ -175,9 +159,9 @@ export class Lamp {
   public setReadyNotReady(ready: boolean): void {
     this.stopBlinkAlarmWarning();
     if (ready) {
-      this.textObject.setBackgroundColor(this.convertColorToString(this.colorReady));
+      this.setReady();
     } else {
-      this.textObject.setBackgroundColor(this.convertColorToString(this.colorNotReady));
+      this.setNotReady();
     }
   }
   
@@ -186,37 +170,15 @@ export class Lamp {
    */
   public setActiveState(): void {
     this.stopBlinkAlarmWarning();
-    this.textObject.setBackgroundColor(this.convertColorToString(this.colorActive));
-  }
-  
-  /**
-   * Устанавливает текст индикатора
-   * @param text Новый текст
-   */
-  public setText(text: string): void {
-    this.textObject.setText(text);
-  }
-  
-  /**
-   * Устанавливает фиксированный размер индикатора
-   * @param width Ширина
-   * @param height Высота
-   */
-  public setFixedSize(width: number, height: number): void {
-    this.textObject.setFixedSize(width, height);
+    this.sprite.setTint(this.colorActive);
+    if (this.text) this.text.setColor('#' + this.colorActive.toString(16).padStart(6, '0'));
   }
   
   /**
    * Уничтожает индикатор
    */
   public destroy(): void {
-    this.textObject.destroy();
-  }
-  
-  /**
-   * Преобразует число в строку с цветом в формате CSS
-   */
-  private convertColorToString(color: number): string {
-    return '#' + color.toString(16).padStart(6, '0');
+    this.sprite.destroy();
+    if (this.text) this.text.destroy();
   }
 } 
