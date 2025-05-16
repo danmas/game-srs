@@ -31,7 +31,11 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
   static readonly RUDER_LEFT_10: number = 2;
   static readonly RUDER_LEFT_15: number = 3;
   
+  // Статический счетчик для уникальных ID
+  private static nextId: number = 0;
+
   // Свойства объекта
+  public readonly id: number; // Уникальный идентификатор объекта
   protected position: Phaser.Math.Vector2;
   protected velocity: Phaser.Math.Vector2;
   protected direction: number = 0;
@@ -63,6 +67,7 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
     super(scene, x, y, texture || 'vehicle');
     this.position = new Phaser.Math.Vector2(x, y);
     this.velocity = new Phaser.Math.Vector2(0, 0);
+    this.id = Vehicle.nextId++; // Присваиваем уникальный ID и инкрементируем счетчик
     
     // Добавление в сцену
     (scene.add as Phaser.GameObjects.GameObjectFactory).existing(this);

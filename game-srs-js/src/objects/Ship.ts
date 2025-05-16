@@ -104,12 +104,12 @@ export class Ship extends Vehicle {
   
   /**
    * Создание визуального представления корабля
-   * Использует методы Phaser 3 для графики: fillStyle, fillRect, strokeRect
+   * Использует методы Phaser 3 для графики: fillStyle, fillCircle, strokeLine, strokeCircle
    * Создает спрайт через add.graphics как для порта
    */
   protected drawShip(): void {
     // Определяем имя текстуры в зависимости от принадлежности
-    const textureName = this.forces === Constants.FORCES_RED ? 'ship_red' : 'ship_white';
+    const textureName = this.forces === Constants.FORCES_RED ? `ship_red_${this.id}` : `ship_white_${this.id}`;
     
     // Цвет зависит от принадлежности
     const mainColor = this.forces === Constants.FORCES_RED ? 
@@ -123,29 +123,43 @@ export class Ship extends Vehicle {
     // Очищаем графику
     graphics.clear();
     
-    // Рисуем корабль в соответствии с оригинальной версией - простой прямоугольник
+    // Рисуем корабль: кружок с линией направления
+    const radius = 10;
+    const lineWidth = 2; // Толщина обводки и линии направления
+    const lineLength = radius * 1.5; // Длина линии направления
+
+    // Тело корабля (круг)
     graphics.fillStyle(mainColor, 1);
-    graphics.lineStyle(2, borderColor, 1);
+    const textureSize = (radius + lineWidth * 2) * 2 + lineLength * 2;
+    const centerX = textureSize / 2;
+    const centerY = textureSize / 2;
+    graphics.fillCircle(centerX, centerY, radius);
+    graphics.lineStyle(lineWidth, borderColor, 1);
+    graphics.strokeCircle(centerX, centerY, radius);
+
+    // Линия направления (используем this.rotation, так как Vehicle его устанавливает в радианах)
+    // this.angle - в градусах, this.rotation - в радианах. Vehicle использует rotation.
+    graphics.moveTo(centerX, centerY);
+    graphics.lineTo(centerX + lineLength * Math.cos(this.rotation), 
+                    centerY + lineLength * Math.sin(this.rotation));
     
-    // Простой прямоугольник для обычного режима
-    graphics.fillRect(-10, -10, 20, 20);
-    graphics.strokeRect(-10, -10, 20, 20);
-    
-    // Если корабль выбран, добавляем дополнительную отметку
+    // Если корабль выбран, добавляем дополнительную отметку (желтый круг)
     if (this.displaySelected) {
-      graphics.lineStyle(1, 0xFFFF00, 1);
-      graphics.strokeRect(-12, -12, 24, 24);
+      graphics.lineStyle(lineWidth, 0xFFFF00, 1); // Желтый цвет для выделения
+      graphics.strokeCircle(centerX, centerY, radius + lineWidth * 2); // Чуть больший круг для выделения
     }
     
     // Создаем текстуру из графики
-    graphics.generateTexture(textureName, 30, 30);
+    // Увеличим размер генерируемой текстуры, чтобы вместить линию и выделение
+    graphics.generateTexture(textureName, textureSize, textureSize);
     
     // Удаляем временную графику
     graphics.destroy();
     
     // Устанавливаем текстуру и размер
     this.setTexture(textureName);
-    this.setDisplaySize(40, 40);
+    // Устанавливаем размер отображения спрайта. Можно сделать его чуть больше, чем сам корабль.
+    this.setDisplaySize(40, 40); // Масштабируем для адекватного размера на экране
   }
   
   /**
