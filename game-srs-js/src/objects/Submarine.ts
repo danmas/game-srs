@@ -32,6 +32,13 @@ export class Submarine extends Ship {
     this.torpedoOnBoardI = 8;
     this.torpedoOnBoardII = 8;
     this.torpedoOnBoardIII = 8;
+    
+    console.log("Создаю подводную лодку с параметрами:");
+    console.log("- underControl:", this.underControl);
+    console.log("- forces:", forces === Constants.FORCES_RED ? "RED" : "WHITE");
+    
+    // Рисуем подводную лодку вместо обычного корабля
+    this.drawVehicle();
   }
   
   /**
@@ -42,12 +49,48 @@ export class Submarine extends Ship {
   }
   
   /**
+   * Отрисовывает вражескую подводную лодку
+   * (Используется для лодок под управлением ИИ)
+   */
+  private drawEnemySubmarine(graphics: Phaser.GameObjects.Graphics, centerX: number, centerY: number, mainColor: number): void {
+    // Рисуем отличительную форму для вражеской подлодки
+    const width = 20;
+    const height = 30;
+    
+    // Основной корпус (прямоугольник с закругленным передним краем)
+    graphics.fillStyle(mainColor, 1);
+    graphics.lineStyle(1, 0x000000, 1);
+    
+    // Прямоугольник для корпуса
+    graphics.fillRect(-width/2, -height/2, width, height);
+    
+    // Закругленная носовая часть
+    graphics.fillCircle(0, -height/2, width/2);
+    
+    // Добавляем характерные детали вражеской подлодки
+    // Рубка (перископ)
+    graphics.fillStyle(0x333333, 1);
+    graphics.fillRect(-width/4, -height/3, width/2, height/4);
+    
+    // Винты сзади
+    graphics.fillStyle(0x666666, 1);
+    graphics.fillCircle(-width/4, height/2, 3);
+    graphics.fillCircle(width/4, height/2, 3);
+  }
+  
+  /**
    * Переопределяем метод отрисовки подлодки
    * Использует методы Phaser 3 для графики и подход как при отрисовке порта
    */
-  protected drawVehicle(): void {
-    // Определяем имя текстуры в зависимости от принадлежности
-    const textureName = this.forces === Constants.FORCES_RED ? 'submarine_red' : 'submarine_white';
+  public drawVehicle(): void {
+    console.log("drawVehicle вызван для подлодки, underControl =", this.underControl);
+    
+    // Определяем имя текстуры в зависимости от принадлежности и выбранности
+    const selected = this.displaySelected ? "_selected" : "";
+    const controlStatus = this.underControl ? "_player" : "_ai";
+    const textureName = this.forces === Constants.FORCES_RED ? 
+                       `submarine_red${selected}${controlStatus}` : 
+                       `submarine_white${selected}${controlStatus}`;
 
     // Цвет зависит от принадлежности
     const mainColor = this.forces === Constants.FORCES_RED ? 
@@ -60,66 +103,88 @@ export class Submarine extends Ship {
     // Очищаем графику
     graphics.clear();
     
-    // В зависимости от того, под управлением или нет, рисуем по-разному
+    // Всегда рисуем детализированную подлодку
+    // Масштабируем с оригинальной версии
+    const scale = 3;
+    
+    // Базовые размеры 
+    const size = this.underControl ? 200 : 50;
+    const halfSize = size / 2;
+    
+    // Размеры текстуры - делаем квадратными для лучшего центрирования
+    const textureSize = size * 3;
+    
+    // Центр текстуры 
+    const centerX = textureSize / 2;
+    const centerY = textureSize / 2;
+    
+    // Перемещаем начало координат в центр текстуры для рисования
+    graphics.translateCanvas(centerX, centerY);
+    
     if (this.underControl) {
-      // Подробное представление для подлодки под управлением игрока
-      // Масштабируем с оригинальной версии
-      const scale = 15; //2.5;
-      
-      // Базовые размеры из оригинала
-      const bh = 14 * scale;      // высота корпуса
-      const bw = 3 * scale;       // ширина корпуса
-      const sh = bw / 2;          // сдвиг
-      
-      const halfWidth = bw / 2;
-      const halfHeight = bh / 2;
-      
-      // Рисуем корпус подлодки
+      // Прямоугольник главного корпуса для лодки игрока
       graphics.fillStyle(mainColor, 1);
-      graphics.lineStyle(1, mainColor, 1);
+      graphics.lineStyle(1, 0x000000, 1);
       
-      // Прямоугольник
-      graphics.fillRect(-halfWidth, -halfHeight, bw, bh);
+      // Вытянутая форма для лодки игрока
+      const width = size / 3;
+      const height = size;
+      const halfWidth = width / 2;
+      const halfHeight = height / 2;
       
-      // Скругленные углы для верхней части
-      graphics.fillCircle(-halfWidth, -halfHeight, halfWidth);
-      graphics.fillCircle(halfWidth, -halfHeight, halfWidth);
+      // Рисуем прямоугольник центрированный относительно центра текстуры
+      graphics.fillRect(-halfWidth, -halfHeight, width, height/2+35);
+      // Скругленные углы для верхней частиs
+      graphics.fillCircle(-halfWidth/2 + 15, -halfHeight, halfWidth);
+      //graphics.fillCircle(halfWidth, -halfHeight, halfWidth/5);
       
       // Треугольный хвост
       graphics.beginPath();
-      graphics.moveTo(-halfWidth, halfHeight);
-      graphics.lineTo(0, halfHeight + bw);
-      graphics.lineTo(halfWidth, halfHeight);
+      graphics.moveTo(-halfWidth, halfHeight/2-15);
+      graphics.lineTo(0, halfHeight + width);
+      graphics.lineTo(halfWidth, halfHeight/2-15);
       graphics.closePath();
       graphics.fillPath();
       
       // Рисуем перископ, если он поднят
-      if (this.periscope) {
-        graphics.fillStyle(0x0f0f0f, 1);
-        graphics.lineStyle(1, 0x0f0f0f, 1);
-        const rh = 3 * scale;
-        const rw = 1 * scale;
-        graphics.fillEllipse(0, -halfHeight / 2, rw, rh);
+      // if (this.periscope) {
+      //   graphics.fillStyle(0x0f0f0f, 1);
+      //   graphics.lineStyle(1, 0x0f0f0f, 1);
+      //   const rh = height / 4;
+      //   const rw = width / 3;
+      //   graphics.fillEllipse(0, -halfHeight / 2, rw, rh);
+      // }
+      
+      // Если подлодка выбрана, добавляем обводку
+      if (this.displaySelected) {
+        graphics.lineStyle(2, 0xFFFF00, 1); // Желтая обводка
+        graphics.strokeRect(-halfWidth - 3, -halfHeight - 3, width + 6, height + 6);
       }
     } else {
-      // Упрощенное представление для ИИ-подлодок - прямоугольник с синим заполнением
-      graphics.lineStyle(2, mainColor, 1);
+      // Для лодки под управлением ИИ используем другую отрисовку
+      this.drawEnemySubmarine(graphics, centerX, centerY, mainColor);
       
-      // Прямоугольник с синим заполнением
-      graphics.fillStyle(0x0000FF, 0.5);
-      graphics.fillRect(-10, -10, 20, 20);
-      graphics.strokeRect(-10, -10, 20, 20);
+      // Если подлодка выбрана, добавляем обводку
+      if (this.displaySelected) {
+        graphics.lineStyle(2, 0xFFFF00, 1); // Желтая обводка
+        graphics.strokeRect(-halfSize - 3, -halfSize - 3, size + 6, size + 6);
+      }
     }
     
+    console.log("Создаю текстуру:", textureName, "размером", textureSize, "x", textureSize);
+    
     // Создаем текстуру из графики
-    graphics.generateTexture(textureName, 50, 50);
+    graphics.generateTexture(textureName, textureSize, textureSize);
     
     // Удаляем временную графику, чтобы не засорять память
     graphics.destroy();
     
-    // Устанавливаем текстуру и размер
+    // Устанавливаем текстуру и размер спрайта
     this.setTexture(textureName);
-    this.setDisplaySize(50, 50);
+    this.setDisplaySize(this.underControl ? 50 : 30, this.underControl ? 50 : 30);
+    
+    // Устанавливаем точку опоры (pivot) в центр спрайта
+    this.setOrigin(0.5, 0.5);
   }
   
   /**

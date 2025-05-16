@@ -52,8 +52,10 @@ export class Ship extends Vehicle {
     this.setInteractive({ useHandCursor: true });
     this.on('pointerdown', this.onClick, this);
     
-    // Рисуем корабль
-    this.drawShip();
+    // Рисуем корабль только если это обычный корабль, а не подводная лодка
+    if (this.constructor === Ship) {
+      this.drawShip();
+    }
     
     // Показываем начальное положение руля, если корабль под управлением
     if (this.underControl) {

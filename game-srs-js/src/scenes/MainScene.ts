@@ -898,6 +898,15 @@ export class MainScene extends Phaser.Scene {
     ship.setUnderControl(true);
     ship.setSelected(true);
     
+    // Принудительная перерисовка для правильного отображения
+    if (ship instanceof Submarine) {
+      (ship as Submarine).drawVehicle();
+    }
+    
+    console.log("Корабль игрока создан:", ship);
+    console.log("underControl =", ship.isUnderControl());
+    console.log("Тип корабля:", ship.constructor.name);
+    
     // Добавляем в соответствующий массив
     if (forces === Constants.FORCES_RED) {
       this.redShips.push(ship);

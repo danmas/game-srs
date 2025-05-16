@@ -400,6 +400,18 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
    */
   public setSelected(selected: boolean): void {
     this.displaySelected = selected;
+    
+    // Перерисовываем объект при изменении состояния выбора
+    if (this.constructor.name === 'Ship') {
+      // Для обычных кораблей
+      (this as any).drawShip();
+    } else if (this.constructor.name === 'Submarine') {
+      // Для подводных лодок
+      const submarine = this as any;
+      if (typeof submarine.drawVehicle === 'function') {
+        submarine.drawVehicle();
+      }
+    }
   }
   
   /**
