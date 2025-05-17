@@ -108,7 +108,7 @@ export class Submarine extends Ship {
     const scale = 3;
     
     // Базовые размеры 
-    const size = this.underControl ? 200 : 50;
+    const size = this.underControl ? 200 : 150;
     const halfSize = size / 2;
     
     // Размеры текстуры - делаем квадратными для лучшего центрирования
