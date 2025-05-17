@@ -258,13 +258,28 @@ export class Ship extends Vehicle {
   public decrementTorpCount(weaponType: number): void {
     switch (weaponType) {
       case Constants.WEAPON_SELECT_TORP_I:
-        if (this.torpedoOnBoardI > 0) this.torpedoOnBoardI--;
+        if (this.torpedoOnBoardI > 0) {
+          this.torpedoOnBoardI--;
+          if (this.torpedoParamsI) {
+            this.reloadTimeTorp1 = this.torpedoParamsI.reloadTimeSec * 1000;
+          }
+        }
         break;
       case Constants.WEAPON_SELECT_TORP_II:
-        if (this.torpedoOnBoardII > 0) this.torpedoOnBoardII--;
+        if (this.torpedoOnBoardII > 0) {
+          this.torpedoOnBoardII--;
+          if (this.torpedoParamsII) {
+            this.reloadTimeTorp2 = this.torpedoParamsII.reloadTimeSec * 1000;
+          }
+        }
         break;
       case Constants.WEAPON_SELECT_TORP_III:
-        if (this.torpedoOnBoardIII > 0) this.torpedoOnBoardIII--;
+        if (this.torpedoOnBoardIII > 0) {
+          this.torpedoOnBoardIII--;
+          if (this.torpedoParamsIII) {
+            this.reloadTimeTorp3 = this.torpedoParamsIII.reloadTimeSec * 1000;
+          }
+        }
         break;
     }
   }

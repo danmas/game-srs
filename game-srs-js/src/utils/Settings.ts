@@ -40,7 +40,7 @@ export class Settings {
   static readonly TRP_I_LIFE_TIME_SEC: number = 60;
   static readonly TRP_I_MAX_VELOCITY: number = 60.0;
   static readonly TRP_I_MANEVR_PRC: number = 80;
-  static readonly TRP_I_TIME_RELOAD_SEC: number = 120;
+  static readonly TRP_I_TIME_RELOAD_SEC: number = 2;
   static readonly TRP_I_DAMEGE: number = 1000.0;
   static readonly TRP_I_DIST_EXECUTION: number = 1000.0;
   
@@ -48,7 +48,7 @@ export class Settings {
   static readonly TRP_II_LIFE_TIME_SEC: number = 60;
   static readonly TRP_II_MAX_VELOCITY: number = 50.0;
   static readonly TRP_II_MANEVR_PRC: number = 80;
-  static readonly TRP_II_TIME_RELOAD_SEC: number = 120;
+  static readonly TRP_II_TIME_RELOAD_SEC: number = 2;
   static readonly TRP_II_DAMEGE: number = 800.0;
   static readonly TRP_II_DIST_EXECUTION: number = 1000.0;
   
@@ -57,7 +57,7 @@ export class Settings {
   static readonly TRP_III_MAX_VELOCITY: number = 38.0;
   static readonly TRP_III_TRG_ACCEPT_DIST: number = 200.0;
   static readonly TRP_III_MANEVR_PRC: number = 80;
-  static readonly TRP_III_TIME_RELOAD_SEC: number = 200;
+  static readonly TRP_III_TIME_RELOAD_SEC: number = 2;
   static readonly TRP_III_DAMEGE: number = 500.0;
   static readonly TRP_III_DIST_EXECUTION: number = 300.0;
   
