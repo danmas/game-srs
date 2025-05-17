@@ -59,6 +59,22 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
   // Базовая шумность объекта, может переопределяться в дочерних классах
   public intrinsicNoisiness: number = 1.0;
 
+  // Графика для отображения кругов шума
+  private noiseCirclesGraphics: Phaser.GameObjects.Graphics | null = null;
+
+  // Пороговые значения и стили для отображения кругов шума (на основе AS-версии)
+  private static readonly NOISE_DISPLAY_THRESHOLDS_AS = [
+    // { threshold: 0.8, color: Constants.COLOR_LIGHT_RED_AS_EQUIVALENT, alpha: 1.0, lineThickness: 2 }, // Самый тихий, самый большой круг
+    // { threshold: 0.5, color: Constants.COLOR_MEDIUM_RED_AS_EQUIVALENT, alpha: 1.0, lineThickness: 2 },
+    // { threshold: 0.2, color: Constants.COLOR_DARK_RED_AS_EQUIVALENT, alpha: 1.0, lineThickness: 2 }  // Самый громкий, самый маленький круг
+    // ПОРЯДОК ВАЖЕН ДЛЯ ОТРИСОВКИ, ЧТОБЫ БОЛЬШИЕ КРУГИ НЕ ПЕРЕКРЫВАЛИ МЕНЬШИЕ, ЕСЛИ БУДЕТ ЗАЛИВКА
+    // НО ТАК КАК У НАС ТОЛЬКО ЛИНИИ, ПОРЯДОК НЕ СТОЛЬ КРИТИЧЕН.
+    // ДЛЯ СООТВЕТСТВИЯ С AS, ГДЕ СНАЧАЛА РИСУЕТСЯ ДЛЯ 0.2, ПОТОМ 0.5, ПОТОМ 0.8:
+    { threshold: 0.2, color: 0xFF0000, alphaLine: 1.0, lineThickness: 2 }, // Темно-красный (пример)
+    { threshold: 0.5, color: 0xFF6347, alphaLine: 1.0, lineThickness: 2 }, // Средне-красный (томатный - пример)
+    { threshold: 0.8, color: 0xFFA07A, alphaLine: 1.0, lineThickness: 2 }  // Светло-красный (светло-лососевый - пример)
+  ];
+
   /**
    * Конструктор
    * @param scene Сцена, к которой принадлежит объект
@@ -79,6 +95,10 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
     if (!texture) {
       this.drawVehicle();
     }
+
+    // Инициализация графики для кругов шума
+    this.noiseCirclesGraphics = this.scene.add.graphics({ x: this.x, y: this.y });
+    this.noiseCirclesGraphics.setDepth(this.depth - 1); // Рисуем под основным спрайтом Vehicle
   }
   
   /**
@@ -128,6 +148,13 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
     // Обновляем позицию спрайта
     this.setPosition(this.position.x, this.position.y);
     this.setRotation(Phaser.Math.DegToRad(this.direction));
+
+    // Обновляем позицию графики кругов шума, чтобы она следовала за кораблем
+    if (this.noiseCirclesGraphics) {
+      this.noiseCirclesGraphics.setPosition(this.x, this.y);
+    }
+    // Обновляем круги шума
+    this.updateNoiseCircles();
   }
   
   /**
@@ -454,10 +481,14 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
   }
   
   /**
-   * Уничтожает объект
+   * Переопределяем destroy, чтобы уничтожить и графику кругов
    */
-  public destroy(fromScene?: boolean): void {
-    super.destroy(fromScene);
+  destroy(removeFromScene?: boolean): void { // Используем параметр как в GameObject.destroy
+    if (this.noiseCirclesGraphics) {
+      this.noiseCirclesGraphics.destroy(removeFromScene); // Передаем тот же параметр
+      this.noiseCirclesGraphics = null;
+    }
+    super.destroy(removeFromScene); // Передаем тот же параметр
   }
   
   /**
@@ -682,5 +713,53 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
     // По умолчанию просто возвращаем базовый уровень шума от источника.
     // Дочерние классы могут добавить сюда свои модификаторы.
     return this.getSourceNoiseLevel();
+  }
+
+  /**
+   * Обновляет и перерисовывает круги визуализации шума.
+   */
+  protected updateNoiseCircles(): void {
+    if (!this.noiseCirclesGraphics) return;
+    this.noiseCirclesGraphics.clear();
+
+    // Рисуем круги только если объект выбран
+    if (!this.displaySelected) {
+      return;
+    }
+
+    const sourceNoiseOutput = this.getNoiseStrength();
+
+    // Объект не шумит или шум слишком мал для отображения минимального порога
+    // Пороги в AS очень низкие, поэтому отсечка по sourceNoiseOutput < 0.1 может быть слишком грубой.
+    // Будем доверять тому, что если радиус получается <=0, круг не нарисуется.
+    if (sourceNoiseOutput <= 0) { // Достаточно проверить, что шум вообще есть
+        return;
+    }
+
+    for (const T of Vehicle.NOISE_DISPLAY_THRESHOLDS_AS) {
+      if (T.threshold <= 0) continue;
+
+      const radiusSquared = sourceNoiseOutput / T.threshold;
+      if (radiusSquared <= 0) continue;
+
+      let radius = Math.sqrt(radiusSquared);
+
+      // В AS радиус умножался на main.getZoom().
+      // В Phaser, если камера масштабирует сцену, то размеры объектов (включая графику)
+      // также масштабируются. Поэтому явное умножение на зум здесь не нужно,
+      // если noiseCirclesGraphics является частью отмасштабированной сцены.
+      // Оставим пока без явного умножения на зум, так как графика привязана к сцене.
+      
+      // Ограничим максимальный радиус отображения, чтобы избежать слишком больших кругов
+      // Это значение нужно будет подобрать. Settings.MAX_DETECTION_RANGE может быть слишком большим.
+      const maxDisplayRadius = Settings.SCREEN_WIDTH * 2; // Например, два экрана
+
+      if (radius > 0 && radius <= maxDisplayRadius) {
+        this.noiseCirclesGraphics.lineStyle(T.lineThickness, T.color, T.alphaLine);
+        // Круги рисуются относительно центра графического объекта (0,0),
+        // а сам графический объект позиционируется по кораблю в Vehicle.update().
+        this.noiseCirclesGraphics.strokeCircle(0, 0, radius);
+      }
+    }
   }
 } 
