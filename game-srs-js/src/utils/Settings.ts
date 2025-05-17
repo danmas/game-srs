@@ -88,7 +88,7 @@ export class Settings {
   static readonly NOISE_DETECTION: number = 0.8;
   
   // Настройки для точек маршрута и хвоста
-  static readonly WAY_POINT_COLOR: number = 0xFFFF00;
+  static readonly WAY_POINT_COLOR: number = 0x90EE90; // Светло-зеленый для путевых точек
   
   // Максимальная дальность обнаружения (используется как "бесконечность" для некоторых расчетов)
   static readonly MAX_DETECTION_RANGE: number = 2000; // Максимальная дальность обнаружения для торпед
@@ -96,8 +96,20 @@ export class Settings {
   // Настройки для точности угла в градусах для движения по путевым точкам
   static readonly ANGLE_PRECISION_FOR_WP: number = 5;
   
-  // Отладочный вывод значения коэффициента
+  // Порог для клика рядом с WP для ее удаления
+  static readonly WAYPOINT_CLICK_DELETE_THRESHOLD: number = 25; // Пиксели в мировых координатах
+  
+  // Цвета
+  public static SHIP_STROKE_COLOR: number = 0xffffff;
+  public static SHIP_STROKE_COLOR_SELECTED: number = 0x00ff00;
+  
+  // Статический блок для отладки или инициализации, если нужен
   static {
-    console.log(`Настройки загружены. koef_coast = ${Settings.koef_coast}`);
+    // console.log(`Settings initialized. DEBUG: ${Settings.DEBUG}`);
   }
-} 
+
+  constructor() {
+    // Конструктор обычно не используется для статических классов-хелперов
+    // Если бы это был инстанцируемый класс, здесь была бы логика.
+  }
+}

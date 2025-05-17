@@ -643,8 +643,8 @@ export class MainScene extends Phaser.Scene {
   private handlePointerDown(pointer: Phaser.Input.Pointer): void {
     // Координаты щелчка в мире игры
     const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-    const x = worldPoint.x;
-    const y = worldPoint.y;
+    const logicalX = CoordUtils.phaserToLogicalX(worldPoint.x);
+    const logicalY = CoordUtils.phaserToLogicalY(worldPoint.y);
 
     // Попробуем найти объект под курсором
     let clickedObject: Vehicle | null = null;
@@ -653,7 +653,7 @@ export class MainScene extends Phaser.Scene {
     for (const vehicle of allVehicles) {
         // Простая проверка попадания в прямоугольник спрайта
         // Для более точного определения можно использовать vehicle.getBounds()
-        if (vehicle.getBounds().contains(x,y)) {
+        if (vehicle.getBounds().contains(worldPoint.x, worldPoint.y)) {
             clickedObject = vehicle;
             break; 
         }
@@ -667,16 +667,61 @@ export class MainScene extends Phaser.Scene {
         }
     }
 
-
     // Начинаем перетаскивание камеры, только если это левая кнопка мыши
     // и если не был кликнут объект (чтобы не мешать выбору)
     if (pointer.leftButtonDown() && !clickedObject) {
       this.isDragging = true;
       this.dragStartX = pointer.x;
       this.dragStartY = pointer.y;
-      return;
+      return; // Завершаем обработку, чтобы не ставить WP при перетаскивании
     }
     
+    // Обработка правого клика мыши для добавления путевой точки
+    if (pointer.rightButtonDown()) {
+      if (this.myShip && this.selectedVehicleForInformer === this.myShip) {
+        // Сначала проверяем, не кликнули ли рядом с существующей WP для удаления
+        const wayPoints = this.myShip.getWayPoints(); // Нужен метод для получения waypoints
+        for (let i = 0; i < wayPoints.length; i++) {
+          const wpData = wayPoints[i];
+          // Графика WP уже находится в Phaser-координатах
+          if (wpData.graphics) {
+            const distanceToWpCenter = Phaser.Math.Distance.Between(
+              worldPoint.x, worldPoint.y, 
+              wpData.graphics.x, wpData.graphics.y
+            );
+            if (distanceToWpCenter < Settings.WAYPOINT_CLICK_DELETE_THRESHOLD) {
+              this.myShip.removeSpecificWayPoint(i);
+              if (this.informer) {
+                this.informer.setCommand(`WP ${i} удалена.`);
+              }
+              console.log(`WP ${i} removed for myShip.`);
+              return; // Завершаем обработку, точка удалена
+            }
+          }
+        }
+
+        // Если не удалили существующую, то добавляем новую
+        const wasAlreadyMoving = this.myShip.isMovingOnWayPoint;
+        this.myShip.addWayPoint(logicalX, logicalY, Constants.WP_TYPE_MOVE);
+        
+        if (!wasAlreadyMoving) { // Если он НЕ двигался до этого, то запускаем движение
+          this.myShip.startMoveOnWP();
+          if (this.informer) {
+            this.informer.setCommand(`WP добавлена, идем к (лог.): X=${Math.floor(logicalX)}, Y=${Math.floor(logicalY)}`);
+          }
+          console.log(`WP added and starting move for myShip: LX=${logicalX.toFixed(0)}, LY=${logicalY.toFixed(0)}`);
+        } else { // Если он УЖЕ двигался, то addWayPoint просто добавил точку в очередь
+          if (this.informer) {
+            this.informer.setCommand(`WP добавлена в маршрут (лог.): X=${Math.floor(logicalX)}, Y=${Math.floor(logicalY)}`);
+          }
+          console.log(`WP added to existing route for myShip: LX=${logicalX.toFixed(0)}, LY=${logicalY.toFixed(0)}`);
+        }
+      } else if (this.informer) {
+        this.informer.setCommandAlarm("Выберите свой корабль для добавления WP");
+      }
+      return; // Правый клик только для WP, не продолжаем другую логику клика
+    }
+
     if (this.gameState !== MainScene.STARTED || !this.myShip) {
       return;
     }
@@ -684,10 +729,10 @@ export class MainScene extends Phaser.Scene {
     // Обработка щелчка в зависимости от состояния
     switch (this.inputTextState) {
       case MainScene.ST_SELECT_SHIP_WAY_POINT:
-        this.myShip.addWayPoint(x, y);
+        this.myShip.addWayPoint(logicalX, logicalY, Constants.WP_TYPE_MOVE);
         this.myShip.startMoveOnWP();
         if (this.informer) {
-          this.informer.setCommand(`Установлена точка маршрута: ${Math.floor(x)}, ${Math.floor(y)}`);
+          this.informer.setCommand(`Установлена точка маршрута: ${Math.floor(logicalX)}, ${Math.floor(logicalY)}`);
         }
         break;
         
@@ -695,10 +740,10 @@ export class MainScene extends Phaser.Scene {
         // Проверяем, что выбрано оружие
         if (this.weaponSelect !== Constants.WEAPON_SELECT_UNKNOWN) {
           // Запускаем торпеду в выбранном направлении
-          const torpedo = this.fireTorpedo(this.myShip, this.weaponSelect, x, y);
+          const torpedo = this.fireTorpedo(this.myShip, this.weaponSelect, logicalX, logicalY);
           
           if (torpedo && this.informer) {
-            this.informer.setCommand(`Торпеда запущена в направлении: ${Math.floor(x)}, ${Math.floor(y)}`);
+            this.informer.setCommand(`Торпеда запущена в направлении: ${Math.floor(logicalX)}, ${Math.floor(logicalY)}`);
           } else if (this.informer) {
             this.informer.setCommandAlarm("Не удалось запустить торпеду! Оружие не готово.");
           }
@@ -710,12 +755,15 @@ export class MainScene extends Phaser.Scene {
         break;
         
       default:
-        // В обычном режиме щелчок просто выбирает точку движения
-        this.myShip.stopMoveOnWayPoint();
-        this.myShip.addWayPoint(x, y);
-        this.myShip.startMoveOnWP();
-        if (this.informer) {
-          this.informer.setCommand(`Установлена точка маршрута: ${Math.floor(x)}, ${Math.floor(y)}`);
+        // В обычном режиме левый щелчок просто выбирает точку движения
+        // Если кликнули не по объекту и это левая кнопка
+        if (!clickedObject && pointer.leftButtonDown() && this.myShip === this.selectedVehicleForInformer) {
+          this.myShip.clearWayPoints(); // Очищаем предыдущий маршрут перед добавлением новой единственной точки
+          this.myShip.addWayPoint(logicalX, logicalY, Constants.WP_TYPE_MOVE);
+          this.myShip.startMoveOnWP();
+          if (this.informer) {
+            this.informer.setCommand(`Движение к (лог.): X=${Math.floor(logicalX)}, Y=${Math.floor(logicalY)}`);
+          }
         }
         break;
     }
