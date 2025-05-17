@@ -674,6 +674,7 @@ export class MainScene extends Phaser.Scene {
       this.isDragging = true;
       this.dragStartX = pointer.x;
       this.dragStartY = pointer.y;
+      return;
     }
     
     if (this.gameState !== MainScene.STARTED || !this.myShip) {

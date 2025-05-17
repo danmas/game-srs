@@ -21,7 +21,7 @@ export class Settings {
   
   // Общие размеры игрового мира (могут быть больше SCREEN_WIDTH/HEIGHT)
   static readonly GAME_WORLD_WIDTH: number = Settings.SCREEN_WIDTH * 10;
-  static readonly GAME_WORLD_HEIGHT: number = Settings.SCREEN_HEIGHT * 10;
+  static readonly GAME_WORLD_HEIGHT: number = 5600; // Было Settings.SCREEN_HEIGHT * 10 (5500). Изменено для выравнивания сетки (кратно 2*gridSize=200)
   
   static readonly SCALE_MAIN: number = 1.5;
   
