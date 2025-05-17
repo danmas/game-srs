@@ -505,15 +505,13 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
     }
     this.setRudder(Vehicle.RUDER_0);
 
-    // Погасить лампочку WP, если это корабль игрока и он закончил маршрут
-    if (this.underControl && this.scene instanceof MainScene) {
-      const mainScene = this.scene as MainScene;
-      if (mainScene.informer) {
-        mainScene.informer.panelLampOff(Constants.LAMP_WP);
-      }
-    }
+    // Очищаем все путевые точки, так как маршрут завершен.
+    // Это также позаботится об уничтожении графики оставшихся точек (если они почему-то остались).
+    this.clearWayPoints();
 
     // Дочерние классы могут переопределить это для специфического поведения (например, начать новый поиск)
+    // Важно: если они переопределяют, они должны вызывать super.onWayPointSequenceFinished() ПОСЛЕ своей логики,
+    // или самостоятельно вызывать clearWayPoints(), если не вызывают super.
   }
   
   /**
