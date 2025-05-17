@@ -939,66 +939,38 @@ export class MainScene extends Phaser.Scene {
   }
   
   /**
-   * Обработчик стрелки влево
+   * Обработка нажатия клавиши влево
    */
   private handleArrowLeft(): void {
-    if (!this.myShip) return;
-    
-    this.myShip.rudderChange(1); // Руль влево
-    this.myShip.stopMoveOnWayPoint(); // Отменяем движение по маршруту при ручном руле
-    
-    // Прямое обновление состояния руля
-    this.myShip.setRudder(this.myShip.getRudder());
-    
-    // Обновляем индикатор руля напрямую
-    if (this.informer) {
-      const rudderValue = this.myShip.getRudder();
-      console.log(`Значение руля после изменения: ${rudderValue}`);
-      if (rudderValue === Vehicle.RUDER_LEFT_5) {
-        this.informer.setRudder("L 5");
-        this.informer.setCommand("Руль 5 градусов влево.");
-      } else if (rudderValue === Vehicle.RUDER_LEFT_10) {
-        this.informer.setRudder("L 10");
-        this.informer.setCommand("Руль 10 градусов влево.");
-      } else if (rudderValue === Vehicle.RUDER_LEFT_15) {
-        this.informer.setRudder("L 15");
-        this.informer.setCommand("Руль 15 градусов влево.");
-      } else if (rudderValue === Vehicle.RUDER_0) {
-        this.informer.setRudder("0");
-        this.informer.setCommand("Прямо по курсу!");
+    if (this.myShip && this.myShip.isUnderControl()) {
+      let currentRudder = this.myShip.getRudder();
+      // Увеличиваем руль влево (уменьшаем значение, так как левый руль - отрицательные или меньшие положительные значения в AS, а у нас положительные)
+      // RUDER_LEFT_5 = 1, RUDER_LEFT_10 = 2, RUDER_LEFT_15 = 3
+      if (currentRudder < Vehicle.RUDER_LEFT_15) {
+        currentRudder++;
+      } else {
+        currentRudder = Vehicle.RUDER_LEFT_15; // Уже на максимуме влево
       }
+      this.myShip.setRudder(currentRudder);
+      console.log("Arrow Left: Rudder set to", currentRudder);
     }
   }
   
   /**
-   * Обработчик стрелки вправо
+   * Обработка нажатия клавиши вправо
    */
   private handleArrowRight(): void {
-    if (!this.myShip) return;
-    
-    this.myShip.rudderChange(-1); // Руль вправо
-    this.myShip.stopMoveOnWayPoint(); // Отменяем движение по маршруту при ручном руле
-    
-    // Прямое обновление состояния руля
-    this.myShip.setRudder(this.myShip.getRudder());
-    
-    // Обновляем индикатор руля напрямую
-    if (this.informer) {
-      const rudderValue = this.myShip.getRudder();
-      console.log(`Значение руля после изменения: ${rudderValue}`);
-      if (rudderValue === Vehicle.RUDER_RIGHT_5) {
-        this.informer.setRudder("R 5");
-        this.informer.setCommand("Руль 5 градусов вправо.");
-      } else if (rudderValue === Vehicle.RUDER_RIGHT_10) {
-        this.informer.setRudder("R 10");
-        this.informer.setCommand("Руль 10 градусов вправо.");
-      } else if (rudderValue === Vehicle.RUDER_RIGHT_15) {
-        this.informer.setRudder("R 15");
-        this.informer.setCommand("Руль 15 градусов вправо.");
-      } else if (rudderValue === Vehicle.RUDER_0) {
-        this.informer.setRudder("0");
-        this.informer.setCommand("Прямо по курсу!");
+    if (this.myShip && this.myShip.isUnderControl()) {
+      let currentRudder = this.myShip.getRudder();
+      // Увеличиваем руль вправо (увеличиваем значение, так как правый руль - положительные или большие отрицательные значения в AS, а у нас отрицательные)
+      // RUDER_RIGHT_5 = -1, RUDER_RIGHT_10 = -2, RUDER_RIGHT_15 = -3
+      if (currentRudder > Vehicle.RUDER_RIGHT_15) {
+        currentRudder--;
+      } else {
+        currentRudder = Vehicle.RUDER_RIGHT_15; // Уже на максимуме вправо
       }
+      this.myShip.setRudder(currentRudder);
+      console.log("Arrow Right: Rudder set to", currentRudder);
     }
   }
   
@@ -1162,8 +1134,8 @@ export class MainScene extends Phaser.Scene {
         torpedo = this.createTorpedoTypeII(launchX, launchY, targetAngle, forces);
         
         // Для торпеды типа II добавляем цель как точку маршрута
-        if (targetX !== undefined && targetY !== undefined) {
-          torpedo.addWayPoint(targetX, targetY, Constants.WP_TARGET);
+        if (targetX !== undefined && targetY !== undefined && torpedo) {
+          torpedo.addWayPoint(CoordUtils.phaserToLogicalX(targetX), CoordUtils.phaserToLogicalY(targetY), Constants.WP_TYPE_TARGET);
           torpedo.startMoveOnWP();
         }
         break;

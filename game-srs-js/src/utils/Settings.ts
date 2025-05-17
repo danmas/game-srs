@@ -17,18 +17,18 @@ export class Settings {
   
   // Настройки дисплея
   static readonly SCREEN_WIDTH: number = 1100; // Размер видимого окна и UI
-  static readonly SCREEN_HEIGHT: number = 550; // Размер видимого окна и UI
+  static readonly SCREEN_HEIGHT: number = 900; // Размер UI
   
   // Общие размеры игрового мира (могут быть больше SCREEN_WIDTH/HEIGHT)
-  static readonly GAME_WORLD_WIDTH: number = Settings.SCREEN_WIDTH * 10;
-  static readonly GAME_WORLD_HEIGHT: number = 5600; // Было Settings.SCREEN_HEIGHT * 10 (5500). Изменено для выравнивания сетки (кратно 2*gridSize=200)
+  static readonly GAME_WORLD_WIDTH: number = 1100*10; // Settings.SCREEN_WIDTH * 10;
+  static readonly GAME_WORLD_HEIGHT: number = 5600; // Settings.SCREEN_HEIGHT * 10 * 0.6222...; // 5600, чтобы было кратно 200 и 100
   
   static readonly SCALE_MAIN: number = 1.5;
   
   // Физика
   static readonly koef_v: number = 30;
   static readonly alfa_v: number = 0.0005;
-  static readonly alfa_r_0: number = 0.001;    // поворот на минимальной скорости
+  static readonly alfa_r_0: number = 0.002;    // поворот на минимальной скорости
   static readonly alfa_r_30: number = 0.005;   // поворот на максимальной скорости
   
   // Торпеды
@@ -91,7 +91,10 @@ export class Settings {
   static readonly WAY_POINT_COLOR: number = 0xFFFF00;
   
   // Максимальная дальность обнаружения (используется как "бесконечность" для некоторых расчетов)
-  static readonly MAX_DETECTION_RANGE: number = 20000; // Произвольное большое значение
+  static readonly MAX_DETECTION_RANGE: number = 2000; // Максимальная дальность обнаружения для торпед
+  
+  // Настройки для точности угла в градусах для движения по путевым точкам
+  static readonly ANGLE_PRECISION_FOR_WP: number = 5;
   
   // Отладочный вывод значения коэффициента
   static {

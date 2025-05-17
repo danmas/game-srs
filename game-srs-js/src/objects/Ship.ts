@@ -289,97 +289,12 @@ export class Ship extends Vehicle {
    * Запускает ИИ - шаг 1 (анализ ситуации)
    */
   public AI_step_I(): void {
-    // Пропускаем, если корабль под управлением игрока
-    if (this.underControl) {
-      return;
-    }
-    
-    // Получаем сцену
-    const scene = this.scene as any;
-    
-    // Получаем корабли противника
-    let enemyShips: Ship[] = [];
-    if (this.forces === Constants.FORCES_RED) {
-      // Красный корабль ищет белые корабли
-      if (scene.getWhiteShips) {
-        enemyShips = scene.getWhiteShips();
-      }
-    } else {
-      // Белый корабль ищет красные корабли
-      if (scene.getRedShips) {
-        enemyShips = scene.getRedShips();
-      }
-    }
-    
-    // Если нет вражеских кораблей, то двигаемся случайно
-    if (enemyShips.length === 0) {
-      if (this.wayPoints.length === 0) {
-        this.generateRandomWayPoint();
-      }
-      return;
-    }
-    
-    // Находим ближайший вражеский корабль
-    let nearestShip: Ship | null = null;
-    let minDistance = Number.MAX_VALUE;
-    
-    for (const ship of enemyShips) {
-      const distance = Phaser.Math.Distance.Between(
-        this.position.x, this.position.y,
-        ship.getPosition().x, ship.getPosition().y
-      );
-      
-      if (distance < minDistance) {
-        minDistance = distance;
-        nearestShip = ship;
-      }
-    }
-    
-    // Если нашли вражеский корабль
-    if (nearestShip) {
-      // Если расстояние до вражеского корабля больше дистанции обнаружения,
-      // то продолжаем двигаться по своему маршруту или генерируем новую точку
-      if (minDistance > Settings.MOVE_ON_TARGET_FROM_DIST) {
-        if (this.wayPoints.length === 0) {
-          this.generateRandomWayPoint();
-        }
-        return;
-      }
-      
-      // Если расстояние до вражеского корабля меньше дистанции обнаружения,
-      // то начинаем преследование
-      if (this.moveState !== Vehicle.ST_WP_SEARCH_TARGET) {
-        // Очищаем точки маршрута
-        this.wayPoints = [];
-        this.wayPointTypes = [];
-        
-        // Устанавливаем состояние преследования
-        this.moveState = Vehicle.ST_WP_SEARCH_TARGET;
-        
-        // Устанавливаем полную скорость
-        this.power = Vehicle.POWER_6;
-      }
-      
-      // Добавляем точку маршрута на позицию вражеского корабля
-      const enemyPos = nearestShip.getPosition();
-      this.addWayPoint(enemyPos.x, enemyPos.y, Constants.WP_TARGET);
-      this.startMoveOnWP();
-      
-      // Если корабль находится достаточно близко для атаки
-      if (minDistance < Settings.TRP_ATACK_DISTANCE_WARNING) {
-        // Запускаем торпеду, если она готова
-        if (this.isWeaponReady(Constants.WEAPON_SELECT_TORP_I)) {
-          const enemyPosPredict = nearestShip.getPosition();
-          
-          // Предсказываем будущую позицию противника
-          const enemyVel = nearestShip.getVelocity();
-          enemyPosPredict.x += enemyVel.x * 2; // 2 секунды упреждения
-          enemyPosPredict.y += enemyVel.y * 2;
-          
-          // Запускаем торпеду
-          (scene as any).fireTorpedo(this, Constants.WEAPON_SELECT_TORP_I, enemyPosPredict.x, enemyPosPredict.y);
-        }
-      }
+    // Логика AI первого уровня (общая для всех кораблей)
+    // Например, обнаружение противника, принятие решения об атаке или уклонении
+
+    // Пример: если здоровье низкое, пытаемся уйти
+    if (this.health < 200 && this.power < Vehicle.POWER_4) {
+      this.setPower(Vehicle.POWER_4);
     }
   }
   
@@ -387,105 +302,166 @@ export class Ship extends Vehicle {
    * Запускает ИИ - шаг 2 (принятие решений)
    */
   public AI_step_II(): void {
-    // Пропускаем, если корабль под управлением игрока
-    if (this.underControl) {
-      return;
-    }
-    
-    // Проверка угрозы от торпед
-    const scene = this.scene as any;
-    
-    // Получаем торпеды противника
-    let enemyTorpedos: Torpedo[] = [];
-    if (this.forces === Constants.FORCES_RED) {
-      // Красный корабль проверяет белые торпеды
-      if (scene.getWhiteTorpedos) {
-        enemyTorpedos = scene.getWhiteTorpedos();
+    // Логика AI второго уровня (более специфичные действия)
+    // Этот метод должен вызываться реже, чем AI_step_I
+
+    if (this.moveState === Vehicle.ST_WP_SEARCH_TARGET) {
+      // Логика движения по точкам для поиска цели
+      if (!this.isMovingOnWayPoint || !this.hasWayPoints()) {
+        // Если не движемся по точкам или точек нет, генерируем новые
+        this.generateRandomWayPoint(); // Генерирует точку и запускает движение
+        if (this.wayPoints.length > 0 && this.wayPoints[0]) { // Добавлена проверка this.wayPoints[0]
+             console.log(`AI ${this.id}: New search WP generated. Target: ${this.wayPoints[0].point.x}, ${this.wayPoints[0].point.y} type: ${this.wayPoints[0].type}`);
+        }
+      } else {
+        // Движемся по точкам, проверяем, не пора ли сменить тактику
+        // Например, если текущая точка - точка поиска, и мы ее почти достигли,
+        // или если прошло достаточно времени.
+        // В AS здесь была проверка типа точки: if (way_point_tip[current_way_point] == WP_TARGET_SEARCH)
+        // Теперь это будет this.wayPoints[this.currentWayPointIndex].type
+        if (this.currentWayPointIndex !== -1 && this.wayPoints[this.currentWayPointIndex] && this.wayPoints[this.currentWayPointIndex].type === Constants.WP_TYPE_SEARCH) {
+          // Дополнительная логика для точки поиска, если нужна
+        }
       }
-    } else {
-      // Белый корабль проверяет красные торпеды
-      if (scene.getRedTorpedos) {
-        enemyTorpedos = scene.getRedTorpedos();
+    } else if (this.moveState === Vehicle.ST_WP_CONVOY_MOVING) {
+      // Логика движения в составе конвоя
+      // (пока не реализована подробно)
+      if (!this.isMovingOnWayPoint || !this.hasWayPoints()) {
+        // Возможно, нужно запросить новые точки у ведущего или вернуться на маршрут
+        // Для примера, просто генерируем случайную точку
+        this.generateRandomWayPoint(Constants.WP_TYPE_CONVOY);
+         if (this.wayPoints.length > 0 && this.wayPoints[0]) { // Добавлена проверка this.wayPoints[0]
+            console.log(`AI ${this.id}: New convoy WP generated. Target: ${this.wayPoints[0].point.x}, ${this.wayPoints[0].point.y} type: ${this.wayPoints[0].type}`);
+        }
       }
+    } else if (this.moveState === Vehicle.ST_WP_TORP_DEFENCE_MOVING) {
+        // Логика уклонения от торпед
+        if (!this.isMovingOnWayPoint || !this.hasWayPoints()) {
+            // Генерируем точку для маневра уклонения
+            this.generateRandomWayPoint(Constants.WP_TYPE_MANEUVER); // Используем новый тип для маневра
+             if (this.wayPoints.length > 0 && this.wayPoints[0]) { // Добавлена проверка this.wayPoints[0]
+                console.log(`AI ${this.id}: New maneuver WP generated. Target: ${this.wayPoints[0].point.x}, ${this.wayPoints[0].point.y} type: ${this.wayPoints[0].type}`);
+            }
+        }
     }
-    
-    // Если нет вражеских торпед, то продолжаем выполнять текущий план
-    if (enemyTorpedos.length === 0) {
-      return;
-    }
-    
-    // Находим ближайшую торпеду и проверяем, угрожает ли она нам
-    let nearestTorpedo: Torpedo | null = null;
-    let minDistance = Number.MAX_VALUE;
-    
-    for (const torpedo of enemyTorpedos) {
-      const distance = Phaser.Math.Distance.Between(
-        this.position.x, this.position.y,
-        torpedo.getPosition().x, torpedo.getPosition().y
-      );
-      
-      if (distance < minDistance) {
-        minDistance = distance;
-        nearestTorpedo = torpedo;
+    // ... Другие состояния AI ...
+
+    // Пример вызова стрельбы торпедами, если есть цель и оружие готово
+    // Эту логику нужно будет значительно расширить
+    const mainScene = this.scene as MainScene;
+    if (mainScene) {
+      let enemyShips: Ship[] = [];
+      if (this.forces === Constants.FORCES_RED) {
+        if (mainScene.getWhiteShips) enemyShips = mainScene.getWhiteShips();
+      } else {
+        if (mainScene.getRedShips) enemyShips = mainScene.getRedShips();
       }
-    }
-    
-    // Если есть ближайшая торпеда
-    if (nearestTorpedo && minDistance < Settings.TRP_ATACK_ALARM_DIST) {
-      // Направление к торпеде
-      const torpedoDirection = Phaser.Math.RadToDeg(
-        Phaser.Math.Angle.Between(
-          this.position.x, this.position.y,
-          nearestTorpedo.getPosition().x, nearestTorpedo.getPosition().y
-        )
-      );
-      
-      // Разница между нашим направлением и направлением к торпеде
-      let angleDiff = Math.abs(this.direction - ((torpedoDirection + 90) % 360));
-      if (angleDiff > 180) angleDiff = 360 - angleDiff;
-      
-      // Если торпеда приближается спереди или сбоку (опасное направление)
-      if (angleDiff < Settings.TRP_ATACK_DEFENSE_ANGLE) {
-        // Уклоняемся от торпеды - поворачиваем перпендикулярно направлению на торпеду
-        const evadeDirection = (torpedoDirection + 180) % 360;
-        
-        // Очищаем маршрут и устанавливаем маневр уклонения
-        this.wayPoints = [];
-        this.wayPointTypes = [];
-        this.moveState = Vehicle.ST_WP_TORP_DEFENCE_MOVING;
-        
-        // Устанавливаем максимальную скорость для уклонения
-        this.power = Vehicle.POWER_6;
-        
-        // Вычисляем точку для уклонения - перпендикулярно к направлению на торпеду
-        const evadeX = this.position.x + Math.cos(Phaser.Math.DegToRad(evadeDirection)) * 200;
-        const evadeY = this.position.y + Math.sin(Phaser.Math.DegToRad(evadeDirection)) * 200;
-        
-        // Добавляем точку уклонения
-        this.addWayPoint(evadeX, evadeY, Constants.WP_TORP_DEFENCE);
-        this.startMoveOnWP();
+
+      const activeEnemies = enemyShips.filter((v: Ship) => v.active && v.getForces() !== this.forces);
+
+      if (activeEnemies.length > 0) {
+        const target = activeEnemies[0] as Ship; // Выбираем первую попавшуюся активную цель
+        if (target && this.isWeaponReady(Constants.WEAPON_SELECT_TORP_I)) {
+          // Проверяем дистанцию и угол
+          const distanceToTarget = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
+          const angleToTargetRad = Phaser.Math.Angle.Between(this.x, this.y, target.x, target.y);
+          let angleToTargetDeg = (Phaser.Math.RadToDeg(angleToTargetRad) + 90 + 360) % 360;
+          const diffAngle = Phaser.Math.Angle.ShortestBetween(this.direction, angleToTargetDeg);
+
+          if (distanceToTarget < Settings.TRP_I_DIST_EXECUTION && Math.abs(diffAngle) < Settings.TRP_ATACK__ANGLE_WARNING) {
+            // this.fireTorpedo(Constants.WEAPON_SELECT_TORP_I, target);
+          }
+        }
       }
     }
   }
   
   /**
-   * Генерирует случайную точку маршрута
+   * Переопределяем обработчик достижения точки маршрута из Vehicle
+   * @param pointType Тип достигнутой точки
+   * @param isLastPoint Является ли точка последней
    */
-  private generateRandomWayPoint(): void {
-    // Очищаем текущие точки
-    this.wayPoints = [];
-    this.wayPointTypes = [];
+  protected override onWayPointReached(pointType: number, isLastPoint: boolean): void {
+    super.onWayPointReached(pointType, isLastPoint); // Вызываем базовую реализацию (для логирования)
+    console.log(`Ship ${this.id} reached WP type: ${pointType}, isLast: ${isLastPoint}. Current AI state: ${this.moveState}`);
+
+    if (this.moveState === Vehicle.ST_WP_SEARCH_TARGET) {
+      if (pointType === Constants.WP_TYPE_SEARCH) {
+        // Достигли точки поиска. Можно, например, постоять немного или изменить направление поиска.
+        // В AS здесь был вызов this.stop(), this.target_locked = false и т.д.
+        // Пока просто остановим движение по WP, если это была последняя точка поиска
+        if (isLastPoint) {
+          console.log(`AI ${this.id}: Search WP sequence finished.`);
+          // this.stopMoveOnWayPoint(); // ST_WP_FINISHED будет установлен в onWayPointSequenceFinished
+        } else {
+          // Если это не последняя точка в серии поисковых точек, просто продолжаем
+        }
+      }
+    } else if (this.moveState === Vehicle.ST_WP_CONVOY_MOVING) {
+      if (pointType === Constants.WP_TYPE_CONVOY) {
+        if (isLastPoint) {
+          console.log(`AI ${this.id}: Convoy WP sequence finished. Holding position or awaiting new orders.`);
+          // this.setPower(Vehicle.POWER_0); // Например, остановиться
+          // this.stopMoveOnWayPoint();
+        }
+      }
+    } else if (this.moveState === Vehicle.ST_WP_TORP_DEFENCE_MOVING) {
+        if (pointType === Constants.WP_TYPE_MANEUVER) {
+            if (isLastPoint) {
+                console.log(`AI ${this.id}: Maneuver WP sequence finished. Assessing situation.`);
+                // После маневра можно вернуться к предыдущей задаче или переоценить обстановку
+                // this.moveState = Vehicle.ST_MOVE_UNKNOWN; // Сбросить состояние маневра
+                // this.stopMoveOnWayPoint();
+            }
+        }
+    }
+    // Другие реакции на типы точек и состояния AI...
+  }
+
+  /**
+   * Переопределяем обработчик завершения всей последовательности путевых точек
+   */
+  protected override onWayPointSequenceFinished(): void {
+    super.onWayPointSequenceFinished(); // Вызываем базовую реализацию (установка флагов, руля)
+    console.log(`Ship ${this.id} finished WP sequence. AI state was: ${this.moveState}`);
+
+    // В зависимости от состояния AI, решаем, что делать дальше
+    if (this.moveState === Vehicle.ST_WP_SEARCH_TARGET) {
+      // Последовательность поиска завершена, генерируем новую точку поиска (или серию точек)
+      // this.generateRandomWayPoint(Constants.WP_TYPE_SEARCH); // Начнет новую последовательность
+      // Либо переходим в другое состояние, если цель найдена или время вышло
+      this.moveState = Vehicle.ST_MOVE_UNKNOWN; // Пример: сброс в общее состояние
+      console.log(`AI ${this.id}: Search sequence complete. Resetting AI state.`);
+    } else if (this.moveState === Vehicle.ST_WP_CONVOY_MOVING) {
+      // Завершили движение по точкам конвоя. Возможно, ждем новых указаний или занимаем позицию.
+      this.setPower(Vehicle.POWER_0); // Например, остановиться
+      this.moveState = Vehicle.ST_MOVE_UNKNOWN; // Сброс
+      console.log(`AI ${this.id}: Convoy sequence complete. Holding or resetting AI state.`);
+    } else if (this.moveState === Vehicle.ST_WP_TORP_DEFENCE_MOVING) {
+        this.moveState = Vehicle.ST_MOVE_UNKNOWN; // Маневр завершен, сбрасываем состояние
+        console.log(`AI ${this.id}: Maneuver sequence complete. Resetting AI state.`);
+    }
+    // Если мы просто двигались по команде (ST_WP_MOVING), то базовая реализация уже все сделала (остановила движение).
+  }
+
+  /**
+   * Генерирует случайную путевую точку и начинает движение к ней.
+   * Используется для простого AI поведения, например, для поиска.
+   * @param wpType Тип создаваемой путевой точки.
+   */
+  private generateRandomWayPoint(wpType: number = Constants.WP_TYPE_SEARCH): void {
+    const margin = 200; // Отступ от границ мира
+    const randomX = Phaser.Math.Between(margin - Settings.GAME_WORLD_WIDTH / 2, Settings.GAME_WORLD_WIDTH / 2 - margin);
+    const randomY = Phaser.Math.Between(margin - Settings.GAME_WORLD_HEIGHT / 2, Settings.GAME_WORLD_HEIGHT / 2 - margin);
+
+    this.clearWayPoints(); // Очищаем предыдущие точки
+    this.addWayPoint(randomX, randomY, wpType);
     
-    // Генерируем случайные координаты в пределах экрана
-    const x = Phaser.Math.Between(50, Settings.SCREEN_WIDTH - 50);
-    const y = Phaser.Math.Between(50, Settings.SCREEN_HEIGHT - 50);
-    
-    // Добавляем точку и запускаем движение
-    this.addWayPoint(x, y, Constants.WP_SHIP);
+    // Устанавливаем мощность для движения, если корабль не движется уже достаточно быстро
+    if (this.getPower() < Vehicle.POWER_3) {
+        this.setPower(Vehicle.POWER_4); // Средняя мощность для движения к точке
+    }
     this.startMoveOnWP();
-    
-    // Устанавливаем случайную скорость
-    this.power = Phaser.Math.Between(Vehicle.POWER_2, Vehicle.POWER_5);
   }
   
   /**

@@ -1,10 +1,18 @@
 import Phaser from 'phaser';
 import { Constants } from '../utils/Constants';
 import { Settings } from '../utils/Settings';
+import { CoordUtils } from '../utils/CoordUtils';
 
 /**
  * Базовый класс для всех движущихся объектов
  */
+export interface WayPointData {
+  point: Phaser.Math.Vector2;
+  type: number;
+  // Можно добавить графический объект для визуализации, если решим ее делать
+  // graphics?: Phaser.GameObjects.Graphics | Phaser.GameObjects.Shape;
+}
+
 export class Vehicle extends Phaser.GameObjects.Sprite {
   // Константы для уровней мощности
   static readonly POWER_0: number = 0;
@@ -21,6 +29,8 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
   static readonly ST_COMMAND_MOVING: number = 2;
   static readonly ST_WP_SEARCH_TARGET: number = 3;
   static readonly ST_WP_TORP_DEFENCE_MOVING: number = 4;
+  static readonly ST_WP_FINISHED: number = 5;
+  static readonly ST_WP_CONVOY_MOVING: number = 6; // Добавлено состояние для движения в конвое
   
   // Константы для положения руля
   static readonly RUDER_RIGHT_15: number = -3;
@@ -49,9 +59,10 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
   protected underControl: boolean = false;
   protected displaySelected: boolean = false;
   protected moveState: number = Vehicle.ST_MOVE_UNKNOWN;
-  protected wayPoints: Phaser.Math.Vector2[] = [];
-  protected wayPointTypes: number[] = [];
-  protected moveOnTarget: boolean = false;
+  protected wayPoints: WayPointData[] = [];
+  protected currentWayPointIndex: number = -1;
+  public isMovingOnWayPoint: boolean = false;
+  protected arrivalThreshold: number = 30; // Дистанция для регистрации прибытия к точке (WAY_POINT_SIZE в AS был 30)
   
   // Маневренность в процентах (100 - торпеды и катера, 50-80 - корабли)
   protected manevr_prc: number = 100;
@@ -142,19 +153,27 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
   update(time: number, delta: number): void {
     this.timeLive += delta;
     
-    // Обновляем физику
+    // Обновляем движение по путевым точкам, если активно
+    if (this.isMovingOnWayPoint) {
+      this.updateMoveOnWayPoint(delta);
+    }
+    
+    // Обновляем физику (учитывает текущий руль и мощность)
     this.updatePhysics(delta);
     
-    // Обновляем позицию спрайта
-    this.setPosition(this.position.x, this.position.y);
-    this.setRotation(Phaser.Math.DegToRad(this.direction));
+    // Обновляем позицию спрайта и поворот
+    this.setPosition(this.position.x, this.position.y); // position обновляется в updatePhysics
+    this.setSpriteRotation(Phaser.Math.DegToRad(this.direction)); // direction обновляется в updatePhysics или updateMoveOnWayPoint (через setRudder)
 
-    // Обновляем позицию графики кругов шума, чтобы она следовала за кораблем
-    if (this.noiseCirclesGraphics) {
-      this.noiseCirclesGraphics.setPosition(this.x, this.y);
+    // Обновляем круги шума, если они есть и объект выбран
+    if (this.noiseCirclesGraphics && (this.displaySelected /*|| Settings.DEBUG_SHOW_ALL_NOISE_CIRCLES*/)) {
+      this.updateNoiseCircles();
+      this.noiseCirclesGraphics.x = this.x;
+      this.noiseCirclesGraphics.y = this.y;
+      this.noiseCirclesGraphics.visible = true;
+    } else if (this.noiseCirclesGraphics) {
+      this.noiseCirclesGraphics.visible = false;
     }
-    // Обновляем круги шума
-    this.updateNoiseCircles();
   }
   
   /**
@@ -246,9 +265,6 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
     // Обновляем позицию
     this.position.x += this.velocity.x * deltaSeconds;
     this.position.y += this.velocity.y * deltaSeconds;
-    
-    // Проверяем достижение точек маршрута
-    this.checkWayPoints();
   }
   
   /**
@@ -266,79 +282,197 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
   }
   
   /**
-   * Проверяет достижение точек маршрута
-   */
-  protected checkWayPoints(): void {
-    if (this.wayPoints.length > 0) {
-      const firstWayPoint = this.wayPoints[0];
-      const distance = Phaser.Math.Distance.Between(
-        this.position.x, this.position.y,
-        firstWayPoint.x, firstWayPoint.y
-      );
-      
-      // Если достигли точки маршрута
-      if (distance < Constants.WAY_POINT_SIZE) {
-        // Удаляем первую точку
-        this.wayPoints.shift();
-        this.wayPointTypes.shift();
-        
-        // Если есть еще точки, устанавливаем направление на следующую
-        if (this.wayPoints.length > 0) {
-          this.setDirectionToWayPoint(this.wayPoints[0]);
-        } else {
-          // Остановка, если нет больше точек
-          this.power = Vehicle.POWER_0;
-        }
-      } else {
-        // Корректируем направление на текущую точку
-        this.setDirectionToWayPoint(firstWayPoint);
-      }
-    }
-  }
-  
-  /**
-   * Устанавливает направление на точку
-   * @param target Целевая точка
-   */
-  protected setDirectionToWayPoint(target: Phaser.Math.Vector2): void {
-    const angle = Phaser.Math.RadToDeg(
-      Phaser.Math.Angle.Between(this.position.x, this.position.y, target.x, target.y)
-    );
-    this.directionTarget = (angle + 90) % 360;
-    if (this.directionTarget < 0) this.directionTarget += 360;
-  }
-  
-  /**
    * Добавляет точку маршрута
    * @param x Координата X
    * @param y Координата Y
    * @param type Тип точки маршрута
    */
-  public addWayPoint(x: number, y: number, type: number = Constants.WP_SHIP): void {
-    this.wayPoints.push(new Phaser.Math.Vector2(x, y));
-    this.wayPointTypes.push(type);
+  public addWayPoint(x: number, y: number, type: number = 0): void {
+    // Используем логические координаты для путевых точек
+    const logicalPoint = new Phaser.Math.Vector2(x, y);
+    this.wayPoints.push({ point: logicalPoint, type: type });
+    // TODO: Add visualization if needed, similar to CustomCircle in AS
   }
   
   /**
-   * Начинает движение к точкам маршрута
+   * Начинает движение по текущему маршруту из путевых точек.
+   * Устанавливает мощность по умолчанию, если не было иной логики.
    */
   public startMoveOnWP(): void {
     if (this.wayPoints.length > 0) {
-      this.moveState = Vehicle.ST_WP_MOVING;
-      this.setDirectionToWayPoint(this.wayPoints[0]);
-      this.power = Vehicle.POWER_3; // Средняя скорость по умолчанию
+      this.currentWayPointIndex = 0;
+      this.isMovingOnWayPoint = true;
+      this.moveState = Vehicle.ST_WP_MOVING; // Устанавливаем состояние движения по WP
+      // Устанавливаем первую путевую точку как цель, но не меняем this.directionTarget напрямую,
+      // это будет управляться логикой в updateMoveOnWayPoint через установку руля.
+      // this.setDirectionToWayPoint(this.wayPoints[this.currentWayPointIndex].point);
+      console.log(`${this.constructor.name} ${this.id} starting WP sequence. First target:`, this.wayPoints[this.currentWayPointIndex].point);
+    } else {
+      this.isMovingOnWayPoint = false;
+      this.moveState = Vehicle.ST_MOVE_UNKNOWN; // или ST_WP_FINISHED, если это более подходяще
     }
   }
   
   /**
-   * Останавливает движение и удаляет все точки маршрута
+   * Немедленно останавливает движение по маршруту и очищает все путевые точки.
    */
   public stopMoveOnWayPoint(): void {
+    this.isMovingOnWayPoint = false;
+    this.currentWayPointIndex = -1;
+    this.moveState = Vehicle.ST_WP_FINISHED; // Состояние: завершено движение по WP
+    this.setRudder(Vehicle.RUDER_0); // Сбрасываем руль в нейтральное положение
+    // this.clearWayPoints(); // Не очищаем здесь, чтобы можно было возобновить или проанализировать маршрут
+    // Очистка должна быть явной через clearWayPoints() или при добавлении нового маршрута
+    this.onWayPointSequenceFinished(); // Уведомляем, что вся последовательность завершена (или прервана)
+    console.log(`${this.constructor.name} ${this.id} stopped WP sequence.`);
+  }
+  
+  /**
+   * Очищает все путевые точки из маршрута.
+   * Также удаляет их визуальное представление, если оно было.
+   */
+  public clearWayPoints(): void {
     this.wayPoints = [];
-    this.wayPointTypes = [];
-    // Не сбрасываем мощность при ручном управлении рулем, как в оригинальной AS-версии
-    // this.power = Vehicle.POWER_0;
-    this.moveState = Vehicle.ST_MOVE_UNKNOWN;
+    this.currentWayPointIndex = -1;
+    this.isMovingOnWayPoint = false;
+    if (this.moveState === Vehicle.ST_WP_MOVING || this.moveState === Vehicle.ST_WP_FINISHED) {
+      this.moveState = Vehicle.ST_MOVE_UNKNOWN; // Сброс состояния, если оно было связано с WP
+    }
+    // TODO: Remove waypoint graphics from scene if they were added
+    console.log(`${this.constructor.name} ${this.id} cleared waypoints.`);
+  }
+  
+  /**
+   * Проверяет, есть ли у объекта заданные путевые точки.
+   * @returns true, если есть хотя бы одна путевая точка.
+   */
+  public hasWayPoints(): boolean {
+    return this.wayPoints.length > 0;
+  }
+  
+  /**
+   * Вызывается при достижении КАЖДОЙ путевой точки в маршруте.
+   * @param pointType Тип достигнутой точки (из Constants.WP_*).
+   * @param isLastPoint Является ли эта точка последней в маршруте.
+   */
+  protected onWayPointReached(pointType: number, isLastPoint: boolean): void {
+    // Базовая реализация пуста. Может быть переопределена в дочерних классах
+    // для специфической реакции на тип точки или на то, последняя ли она.
+    // Например, в Ship.as здесь менялся move_state или параметры движения.
+    console.log(`${this.constructor.name} ${this.id} reached waypoint of type ${pointType}. Is last: ${isLastPoint}`);
+  }
+  
+  /**
+   * Вызывается при достижении ПОСЛЕДНЕЙ точки всего маршрута.
+   * Завершает движение по путевым точкам.
+   */
+  protected onWayPointSequenceFinished(): void {
+    // Базовая реализация: остановка движения по точкам
+    console.log(`${this.constructor.name} ${this.id} WP sequence finished.`);
+    // this.stopMoveOnWayPoint(); // Не вызываем здесь, чтобы избежать рекурсии, если stop вызвал onWayPointSequenceFinished
+    this.isMovingOnWayPoint = false;
+    this.currentWayPointIndex = -1;
+    // ST_WP_FINISHED будет установлен в stopMoveOnWayPoint, если он вызывается извне,
+    // или здесь, если это естественное завершение
+    if (this.moveState === Vehicle.ST_WP_MOVING) {
+        this.moveState = Vehicle.ST_WP_FINISHED;
+    }
+    this.setRudder(Vehicle.RUDER_0);
+    // Дочерние классы могут переопределить это для специфического поведения (например, начать новый поиск)
+  }
+  
+  /**
+   * Обновляет движение объекта к текущей путевой точке.
+   * Включает логику поворота и переключения на следующую точку.
+   * @param delta Время, прошедшее с последнего обновления, в миллисекундах.
+   */
+  protected updateMoveOnWayPoint(delta: number): void {
+    if (!this.isMovingOnWayPoint || this.currentWayPointIndex < 0 || this.currentWayPointIndex >= this.wayPoints.length) {
+      this.isMovingOnWayPoint = false;
+      if (this.moveState === Vehicle.ST_WP_MOVING) { // Если мы активно двигались по WP
+          this.moveState = Vehicle.ST_WP_FINISHED; // Отмечаем как завершенное
+          this.onWayPointSequenceFinished(); // Вызываем обработчик завершения всей последовательности
+      }
+      return;
+    }
+
+    const currentWpData = this.wayPoints[this.currentWayPointIndex];
+    const targetLogicalPos = currentWpData.point;
+
+    // Конвертируем логические координаты цели в Phaser координаты для расчета дистанции и угла
+    const targetPhaserPos = new Phaser.Math.Vector2(
+        CoordUtils.logicalToPhaserX(targetLogicalPos.x),
+        CoordUtils.logicalToPhaserY(targetLogicalPos.y)
+    );
+
+    const distanceToTarget = Phaser.Math.Distance.Between(this.x, this.y, targetPhaserPos.x, targetPhaserPos.y);
+
+    // Проверка достижения точки
+    if (distanceToTarget <= this.arrivalThreshold) {
+      const isLastPoint = this.currentWayPointIndex === this.wayPoints.length - 1;
+      this.onWayPointReached(currentWpData.type, isLastPoint);
+
+      if (isLastPoint) {
+        this.onWayPointSequenceFinished(); // Вызываем обработчик завершения всей последовательности
+        this.isMovingOnWayPoint = false; // Останавливаем движение по WP
+        this.moveState = Vehicle.ST_WP_FINISHED;
+        // Не сбрасываем currentWayPointIndex, чтобы можно было понять, на какой точке остановились
+        return;
+      } else {
+        this.currentWayPointIndex++;
+        // console.log(`${this.constructor.name} ${this.id} reached WP, next target:`, this.wayPoints[this.currentWayPointIndex].point);
+        // Цель изменилась, пересчитываем для текущего кадра
+        // (или можно оставить поворот на следующий кадр, как было бы в реальности)
+        // Для более плавной реакции, пересчитаем targetPhaserPos для логики руления ниже
+        const nextWpData = this.wayPoints[this.currentWayPointIndex];
+        const nextTargetLogicalPos = nextWpData.point;
+        targetPhaserPos.set(
+            CoordUtils.logicalToPhaserX(nextTargetLogicalPos.x),
+            CoordUtils.logicalToPhaserY(nextTargetLogicalPos.y)
+        );
+        // console.log(`${this.constructor.name} ${this.id} advancing to WP index ${this.currentWayPointIndex}`);
+
+      }
+    }
+
+    // Логика руления для достижения текущей targetPhaserPos
+    // Угол направления в градусах (0 - вверх, 90 - вправо, 180 - вниз, 270 - влево)
+    // this.direction уже в градусах и соответствует этой конвенции.
+
+    // Рассчитываем угол к текущей цели (targetPhaserPos)
+    const angleToTargetRad = Phaser.Math.Angle.Between(this.x, this.y, targetPhaserPos.x, targetPhaserPos.y);
+    // Phaser.Math.Angle.Between возвращает угол в радианах, где 0 вправо.
+    // Нам нужен угол, где 0 - вверх, и в градусах.
+    // Сначала конвертируем в градусы:
+    let angleToTargetDeg = Phaser.Math.RadToDeg(angleToTargetRad);
+    // Теперь приводим к нашей системе координат (0 = вверх):
+    // Угол из Angle.Between: 0 вправо, 90 вниз, 180 влево, -90 вверх (или 270)
+    // Наша система: 0 вверх, 90 вправо, 180 вниз, 270 влево
+    // Преобразование: naš_ugol = (phaser_ugol + 90) % 360
+    angleToTargetDeg = (angleToTargetDeg + 90 + 360) % 360;
+
+
+    // Кратчайший угол поворота
+    const diffAngle = Phaser.Math.Angle.ShortestBetween(this.direction, angleToTargetDeg); // оба угла в градусах
+
+    if (Math.abs(diffAngle) > Settings.ANGLE_PRECISION_FOR_WP) {
+      // Необходимо повернуть
+      if (diffAngle > 0) { // Поворот влево (против часовой стрелки в нашей системе, this.direction увеличивается)
+        if (Math.abs(diffAngle) > 45) this.setRudder(Vehicle.RUDER_LEFT_15);
+        else if (Math.abs(diffAngle) > 20) this.setRudder(Vehicle.RUDER_LEFT_10);
+        else this.setRudder(Vehicle.RUDER_LEFT_5);
+      } else { // Поворот вправо (по часовой стрелке, this.direction уменьшается)
+        if (Math.abs(diffAngle) > 45) this.setRudder(Vehicle.RUDER_RIGHT_15);
+        else if (Math.abs(diffAngle) > 20) this.setRudder(Vehicle.RUDER_RIGHT_10);
+        else this.setRudder(Vehicle.RUDER_RIGHT_5);
+      }
+    } else {
+      // Курс в пределах допустимой точности, руль прямо
+      this.setRudder(Vehicle.RUDER_0);
+    }
+
+    // Физика (включая поворот от руля и движение вперед) будет обновлена в self.updatePhysics(delta)
+    // который вызывается в Vehicle.update() после updateMoveOnWayPoint.
   }
   
   /**
@@ -500,14 +634,6 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
   }
   
   /**
-   * Проверяет, есть ли точки маршрута
-   * @returns true, если есть хотя бы одна точка маршрута
-   */
-  public hasWayPoints(): boolean {
-    return this.wayPoints.length > 0;
-  }
-  
-  /**
    * Устанавливает положение руля
    * @param newRudder Новое положение руля
    */
@@ -515,51 +641,6 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
     if (newRudder >= Vehicle.RUDER_RIGHT_15 && newRudder <= Vehicle.RUDER_LEFT_15) {
       this.rudder = newRudder;
     }
-    
-    // Обновляем интерфейс, если корабль под контролем
-    if (this.underControl) {
-      this.showRudder();
-    }
-  }
-  
-  /**
-   * Изменяет положение руля
-   * @param delta Изменение положения руля (+1 - влево, -1 - вправо)
-   */
-  public rudderChange(delta: number): void {
-    console.log(`Vehicle.rudderChange вызван с delta=${delta}, текущий руль=${this.rudder}`);
-    
-    // Возвращаем в нейтральное положение, если меняем направление
-    if ((this.rudder < 0 && delta > 0) || (this.rudder > 0 && delta < 0)) {
-      this.rudder = Vehicle.RUDER_0;
-      console.log(`Руль установлен в нейтральное положение: ${this.rudder}`);
-      this.showRudder();
-      return;
-    }
-    
-    // Увеличиваем положение руля влево
-    if (delta > 0) {
-      if (this.rudder === Vehicle.RUDER_0) {
-        this.rudder = Vehicle.RUDER_LEFT_5;
-      } else if (this.rudder === Vehicle.RUDER_LEFT_5) {
-        this.rudder = Vehicle.RUDER_LEFT_10;
-      } else if (this.rudder === Vehicle.RUDER_LEFT_10) {
-        this.rudder = Vehicle.RUDER_LEFT_15;
-      }
-    }
-    
-    // Увеличиваем положение руля вправо
-    if (delta < 0) {
-      if (this.rudder === Vehicle.RUDER_0) {
-        this.rudder = Vehicle.RUDER_RIGHT_5;
-      } else if (this.rudder === Vehicle.RUDER_RIGHT_5) {
-        this.rudder = Vehicle.RUDER_RIGHT_10;
-      } else if (this.rudder === Vehicle.RUDER_RIGHT_10) {
-        this.rudder = Vehicle.RUDER_RIGHT_15;
-      }
-    }
-    
-    console.log(`Новое положение руля: ${this.rudder}`);
     
     // Обновляем интерфейс, если корабль под контролем
     if (this.underControl) {
@@ -761,5 +842,10 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
         this.noiseCirclesGraphics.strokeCircle(0, 0, radius);
       }
     }
+  }
+
+  // Метод setRotation уже есть в Phaser.GameObjects.Sprite, используем другое имя для нашего метода setSpriteRotation
+  public setSpriteRotation(radians: number): void {
+    super.setRotation(radians);
   }
 } 

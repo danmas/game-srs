@@ -63,9 +63,19 @@ export class TorpedoTypeII extends Torpedo {
    */
   public AI_step_I(): void {
     // Проверяем наличие точек маршрута
-    if (this.wayPoints.length > 0) {
-      // Обновляем направление на текущую точку
-      this.setDirectionToWayPoint(this.wayPoints[0]);
+    // if (this.wayPoints.length > 0) { // Старая логика, setDirectionToWayPoint удален
+    //   // Обновляем направление на текущую точку
+    //   this.setDirectionToWayPoint(this.wayPoints[0].point); // Передаем .point
+    // }
+    // Логика движения по путевым точкам теперь полностью в Vehicle.updateMoveOnWayPoint()
+    // Если торпеде нужны путевые точки, их нужно добавить, и вызвать startMoveOnWP()
+    // Убедимся, что торпеда движется, если есть точки и она в состоянии ST_WP_MOVING
+    if (this.moveState === Vehicle.ST_WP_MOVING && this.hasWayPoints() && !this.isMovingOnWayPoint) {
+        this.startMoveOnWP(); // Запускаем движение по WP, если оно еще не запущено
+    }
+    if (this.isMovingOnWayPoint && this.getPower() < Vehicle.POWER_6) {
+        // Торпеды обычно идут на полной мощности к цели
+        this.setPower(Vehicle.POWER_6);
     }
   }
   
