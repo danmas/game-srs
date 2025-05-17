@@ -66,6 +66,8 @@ export class MainScene extends Phaser.Scene {
   private dragStartX: number = 0;
   private dragStartY: number = 0;
   
+  private gridGraphics: Phaser.GameObjects.Graphics | null = null;
+  
   public selectedVehicleForInformer: Vehicle | null = null;
   
   /**
@@ -159,16 +161,44 @@ export class MainScene extends Phaser.Scene {
     );
     worldBg.setDepth(-100); // Ставим ниже всех объектов
     
+    // Создаем сетку
+    this.gridGraphics = this.add.graphics();
+    this.gridGraphics.setDepth(-99); // Чуть выше фона, но ниже границы
+
+    const gridSize = 100; // Размер ячейки сетки
+    const gridColor = 0xCCCCCC; // Цвет сетки (светло-серый)
+    const gridAlpha = 0.25;    // Прозрачность сетки
+    const gridLineThickness = 1; // Толщина линий сетки
+
+    this.gridGraphics.lineStyle(gridLineThickness, gridColor, gridAlpha);
+
+    // Рисуем вертикальные линии
+    // Чтобы сетка покрывала большую область и была видна при скролле,
+    // можно рисовать ее на большей площади, чем просто SCREEN_WIDTH/HEIGHT.
+    // Например, от -SCREEN_WIDTH до 2*SCREEN_WIDTH.
+    // Для начала сделаем от 0 до SCREEN_WIDTH/HEIGHT.
+    // Игровой мир начинается с (0,0)
+    for (let x = 0; x <= Settings.SCREEN_WIDTH; x += gridSize) {
+      this.gridGraphics.moveTo(x, 0);
+      this.gridGraphics.lineTo(x, Settings.SCREEN_HEIGHT);
+    }
+    // Рисуем горизонтальные линии
+    for (let y = 0; y <= Settings.SCREEN_HEIGHT; y += gridSize) {
+      this.gridGraphics.moveTo(0, y);
+      this.gridGraphics.lineTo(Settings.SCREEN_WIDTH, y);
+    }
+    this.gridGraphics.strokePath(); // Завершаем отрисовку линий
+
     // Создаем внутреннюю игровую зону (синий цвет не нужен, так как фон камеры уже синий)
     // Вместо этого создаем только белую границу
     const border = this.add.graphics();
     border.lineStyle(4, 0xFFFFFF, 0.8); // Белая граница
     border.strokeRect(0, 0, Settings.SCREEN_WIDTH, Settings.SCREEN_HEIGHT);
-    border.setDepth(-98); // Выше игровой зоны
+    border.setDepth(-98); // Выше игровой зоны и сетки
     
     // Фоновые элементы должны видеться только в gameCamera, не в uiCamera
     if (this.uiCamera) {
-      this.uiCamera.ignore([worldBg, border]);
+      this.uiCamera.ignore([worldBg, this.gridGraphics, border]); // Добавляем gridGraphics в ignore
     }
   }
   
@@ -1204,10 +1234,9 @@ export class MainScene extends Phaser.Scene {
    * Удаляет все препятствия
    */
   public clearObstructions(): void {
-    for (const obstruction of this.obstructions) {
-      obstruction.destroy();
-    }
+    this.obstructions.forEach(obs => obs.destroy());
     this.obstructions = [];
+    // Также очистим графику, если она была частью объектов Obstruction и не удалилась с ними
   }
   
   /**
@@ -1382,5 +1411,16 @@ export class MainScene extends Phaser.Scene {
     // Можно добавить дополнительную логику, например, центрирование камеры на выбранном объекте,
     // или обновление специфичных частей UI.
     console.log(`Выбран для информера: ${vehicle ? vehicle.constructor.name + ' ID ' + vehicle.id : 'null'}`);
+  }
+
+  // Уничтожаем и графику сетки при уничтожении сцены
+  destroy() {
+    if (this.gridGraphics) {
+        this.gridGraphics.destroy();
+        this.gridGraphics = null;
+    }
+    // Здесь нужно вызвать super.destroy() или убедиться, что Phaser это делает.
+    // В GameObject.destroy() есть параметр removeFromScene, но для Scene его нет.
+    // Обычно Phaser сам управляет уничтожением объектов сцены.
   }
 } 

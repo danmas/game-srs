@@ -16,8 +16,8 @@ export class Settings {
   static readonly DRAW_TORPED_CALC: boolean = false;
   
   // Настройки дисплея
-  static readonly SCREEN_WIDTH: number = 1000;
-  static readonly SCREEN_HEIGHT: number = 700;
+  static readonly SCREEN_WIDTH: number = 1100;
+  static readonly SCREEN_HEIGHT: number = 550;
   static readonly SCALE_MAIN: number = 1.5;
   
   // Физика
