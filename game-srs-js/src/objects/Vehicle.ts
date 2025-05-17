@@ -806,49 +806,49 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
       return;
     }
     
-    console.log(`Setting rudder display to: ${this.rudder}`);
-    console.log(`Тип информера: ${typeof informer}`);
-    console.log(`Информер имеет метод setRudder: ${informer && typeof informer.setRudder === 'function'}`);
+    // console.log(`Setting rudder display to: ${this.rudder}`);
+    // console.log(`Тип информера: ${typeof informer}`);
+    // console.log(`Информер имеет метод setRudder: ${informer && typeof informer.setRudder === 'function'}`);
     
     switch (this.rudder) {
       case Vehicle.RUDER_0:
-        console.log('Устанавливаем руль в положение 0');
+        // console.log('Устанавливаем руль в положение 0');
         informer.setCommand("Прямо по курсу!");
         informer.setRudder("0");
         break;
         
       case Vehicle.RUDER_LEFT_5:
-        console.log('Устанавливаем руль в положение L 5');
+        // console.log('Устанавливаем руль в положение L 5');
         informer.setCommand("Руль 5 градусов влево.");
         informer.setRudder("L 5");
         break;
         
       case Vehicle.RUDER_LEFT_10:
-        console.log('Устанавливаем руль в положение L 10');
+        // console.log('Устанавливаем руль в положение L 10');
         informer.setCommand("Руль 10 градусов влево.");
         informer.setRudder("L 10");
         break;
         
       case Vehicle.RUDER_LEFT_15:
-        console.log('Устанавливаем руль в положение L 15');
+        // console.log('Устанавливаем руль в положение L 15');
         informer.setCommand("Руль 15 градусов влево.");
         informer.setRudder("L 15");
         break;
         
       case Vehicle.RUDER_RIGHT_5:
-        console.log('Устанавливаем руль в положение R 5');
+        // console.log('Устанавливаем руль в положение R 5');
         informer.setCommand("Руль 5 градусов вправо.");
         informer.setRudder("R 5");
         break;
         
       case Vehicle.RUDER_RIGHT_10:
-        console.log('Устанавливаем руль в положение R 10');
+        // console.log('Устанавливаем руль в положение R 10');
         informer.setCommand("Руль 10 градусов вправо.");
         informer.setRudder("R 10");
         break;
         
       case Vehicle.RUDER_RIGHT_15:
-        console.log('Устанавливаем руль в положение R 15');
+        // console.log('Устанавливаем руль в положение R 15');
         informer.setCommand("Руль 15 градусов вправо.");
         informer.setRudder("R 15");
         break;

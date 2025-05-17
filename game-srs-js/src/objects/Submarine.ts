@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { Ship } from './Ship';
 import { Constants } from '../utils/Constants';
 import { Settings } from '../utils/Settings';
+import { TorpedoTypeI } from './TorpedoTypeI';
+import { MainScene } from '../scenes/MainScene';
 
 /**
  * Класс подводной лодки
@@ -273,5 +275,65 @@ export class Submarine extends Ship {
     
     // Дополнительная логика ИИ для принятия решений
     // Будет реализовано позже
+  }
+
+  /**
+   * Специальный метод для игрока для запуска торпеды типа I.
+   * Торпеда движется к указанной игроком точке (targetLogicalPoint),
+   * а затем продолжает движение прямолинейно.
+   * @param targetLogicalPoint Логические координаты цели (Phaser.Math.Vector2).
+   */
+  public fireTorpedoTypeIPlayer(targetLogicalPoint: Phaser.Math.Vector2): void {
+    if (this.getTorpOnBoard(Constants.WEAPON_SELECT_TORP_I) > 0 && this.isWeaponReady(Constants.WEAPON_SELECT_TORP_I)) {
+      if (!this.torpedoParamsI) {
+        console.error("Torpedo Type I parameters are not initialized!");
+        return;
+      }
+
+      this.decrementTorpCount(Constants.WEAPON_SELECT_TORP_I); // Уменьшаем счетчик
+      this.timeLastTorpedoFire = this.scene.time.now; // Обновляем время последнего выстрела (для перезарядки)
+      this.reloadTimeTorp1 = this.torpedoParamsI.reloadTimeSec * 1000; // Запускаем перезарядку
+
+      // Позиция и угол корабля
+      const shipPos = this.getPosition(); // Phaser world coordinates
+      const shipAngle = this.angle; // Угол корабля в градусах (0-360, 0 - вверх)
+
+      // Начальная позиция торпеды немного впереди корабля
+      const launchDist = 20; // Расстояние от центра корабля для запуска
+      const startX = shipPos.x + Math.sin(Phaser.Math.DegToRad(shipAngle)) * launchDist;
+      const startY = shipPos.y - Math.cos(Phaser.Math.DegToRad(shipAngle)) * launchDist;
+      
+      // Начальный угол торпеды - по курсу корабля
+      const startAngle = shipAngle;
+
+      const torpedo = new TorpedoTypeI(
+        this.scene as MainScene,
+        startX,
+        startY,
+        startAngle,
+        this.torpedoParamsI,
+        this.forces
+      );
+
+      // Добавляем торпеду на сцену и в массивы через MainScene
+      (this.scene as MainScene).registerCreatedTorpedo(torpedo);
+
+      // Добавляем указанную игроком точку как первую и единственную путевую точку торпеды
+      // с особым типом WP_TYPE_TORPEDO_TARGET
+      torpedo.addWayPoint(targetLogicalPoint.x, targetLogicalPoint.y, Constants.WP_TYPE_TORPEDO_TARGET);
+      torpedo.startMoveOnWP();
+
+      console.log(`Submarine fireTorpedoTypeIPlayer: Torpedo I launched at logical (${targetLogicalPoint.x}, ${targetLogicalPoint.y})`);
+      const mainScene = this.scene as MainScene;
+      if (mainScene.informer) {
+        mainScene.informer.setCommand("Торпеда I запущена!");
+      }
+    } else {
+      console.warn("Submarine fireTorpedoTypeIPlayer: Cannot fire Torpedo I - none available or not ready.");
+      const mainScene = this.scene as MainScene;
+      if (mainScene.informer) {
+        mainScene.informer.setCommandAlarm("Торпеда I не готова!");
+      }
+    }
   }
 } 

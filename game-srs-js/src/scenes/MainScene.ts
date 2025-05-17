@@ -15,6 +15,12 @@ import { Obstruction } from '../objects/Obstruction';
 import { Scenario } from '../scenario/Scenario';
 import { CoordUtils } from '../utils/CoordUtils';
 
+// Enum for player control states - ADDED
+enum PlayerControlState {
+  NORMAL,
+  SELECTING_TORPEDO_TARGET,
+}
+
 /**
  * Основная игровая сцена
  */
@@ -70,6 +76,11 @@ export class MainScene extends Phaser.Scene {
   private gridGraphics: Phaser.GameObjects.Graphics | null = null;
   
   public selectedVehicleForInformer: Vehicle | null = null;
+  
+  // Added for torpedo targeting
+  private playerControlState: PlayerControlState = PlayerControlState.NORMAL;
+  private torpedoTargetCursor!: Phaser.GameObjects.Graphics | null;
+  private torpedoAimingLine!: Phaser.GameObjects.Graphics | null;
   
   /**
    * Конструктор
@@ -646,6 +657,21 @@ export class MainScene extends Phaser.Scene {
     const logicalX = CoordUtils.phaserToLogicalX(worldPoint.x);
     const logicalY = CoordUtils.phaserToLogicalY(worldPoint.y);
 
+    // --- START: Torpedo Targeting Logic ---
+    if (this.playerControlState === PlayerControlState.SELECTING_TORPEDO_TARGET) {
+      if (pointer.leftButtonDown()) {
+        if (this.myShip instanceof Submarine) {
+          // fireTorpedoTypeIPlayer expects logical coordinates
+          this.myShip.fireTorpedoTypeIPlayer(new Phaser.Math.Vector2(logicalX, logicalY)); 
+          this.cancelTorpedoTargeting();
+        }
+      } else if (pointer.rightButtonDown()) {
+        this.cancelTorpedoTargeting();
+      }
+      return; // Prevent other actions while targeting
+    }
+    // --- END: Torpedo Targeting Logic ---
+
     // Попробуем найти объект под курсором
     let clickedObject: Vehicle | null = null;
     const allVehicles: Vehicle[] = [...this.whiteShips, ...this.redShips, ...this.whiteTorpedos, ...this.redTorpedos];
@@ -774,6 +800,12 @@ export class MainScene extends Phaser.Scene {
    * @param pointer Указатель мыши
    */
   private handlePointerMove(pointer: Phaser.Input.Pointer): void {
+    // --- START: Torpedo Targeting Logic ---
+    if (this.playerControlState === PlayerControlState.SELECTING_TORPEDO_TARGET) {
+      this.updateTorpedoTargetCursor(pointer.worldX, pointer.worldY);
+    }
+    // --- END: Torpedo Targeting Logic ---
+
     if (!this.isDragging) return;
     
     // Вычисляем смещение в пикселях
@@ -839,11 +871,43 @@ export class MainScene extends Phaser.Scene {
     // Если игра не запущена или нет корабля игрока, остальные клавиши не обрабатываем
     if (this.gameState !== MainScene.STARTED || !this.myShip) {
       console.log('Игра не запущена или нет корабля игрока');
+      // Allow Esc to cancel targeting even if game is not "started" (e.g. in mission goal screen)
+      if ((event.key === 'Escape' || event.keyCode === 27) && this.playerControlState === PlayerControlState.SELECTING_TORPEDO_TARGET) {
+        this.cancelTorpedoTargeting();
+      }
       return;
     }
     
-    // Обработка по ключу event.key
-    switch(event.key) {
+    // --- START: Torpedo Targeting Key Handling (ESC, ENTER before main switch) ---
+    if (this.playerControlState === PlayerControlState.SELECTING_TORPEDO_TARGET) {
+      if (event.key === 'Escape' || event.keyCode === 27) { // Escape
+        this.cancelTorpedoTargeting();
+        return; // Consume event
+      }
+      if (event.key === 'Enter' || event.keyCode === 13) { // Enter
+        if (this.myShip instanceof Submarine) {
+          const worldX = this.input.activePointer.worldX;
+          const worldY = this.input.activePointer.worldY;
+          // Corrected: Use phaserToLogicalX and phaserToLogicalY
+          const logicalPoint = new Phaser.Math.Vector2(
+            CoordUtils.phaserToLogicalX(worldX),
+            CoordUtils.phaserToLogicalY(worldY)
+          );
+          this.myShip.fireTorpedoTypeIPlayer(logicalPoint);
+          this.cancelTorpedoTargeting();
+        }
+        return; // Consume event
+      }
+      // If in targeting mode, other keys (like Q, W, E for weapon switch) might be ignored or handled differently
+      // For now, let's allow Q to re-trigger or select another torpedo if needed, or other keys to pass through
+    }
+    // --- END: Torpedo Targeting Key Handling ---
+
+    // Обработка по ключу event.key или event.keyCode
+    const key = event.key.toLowerCase();
+    const keyCode = event.keyCode || event.which;
+
+    switch(key) { // Сначала пробуем по event.key (предпочтительнее для читаемости)
       // Управление мощностью
       case '0':
         this.myShip.setPower(Vehicle.POWER_0);
@@ -875,14 +939,14 @@ export class MainScene extends Phaser.Scene {
         break;
         
       // Управление рулем (стрелки влево/вправо)
-      case 'ArrowLeft':
-      case 'Left':    // Для поддержки IE/Edge
+      case 'arrowleft':
+      case 'left':    // Для поддержки IE/Edge
         console.log('Обработка стрелки влево');
         this.handleArrowLeft();
         break;
         
-      case 'ArrowRight':
-      case 'Right':    // Для поддержки IE/Edge
+      case 'arrowright':
+      case 'right':    // Для поддержки IE/Edge
         console.log('Обработка стрелки вправо');
         this.handleArrowRight();
         break;
@@ -922,23 +986,15 @@ export class MainScene extends Phaser.Scene {
         }
         break;
         
-      // Выбор оружия
-      case 'q':
-      case 'Q':
-        // Торпеда I
-        this.weaponSelect = Constants.WEAPON_SELECT_TORP_I;
-        this.inputTextState = MainScene.ST_SELECT_TORP_WAY_POINT;
-        if (this.informer) {
-          if (this.myShip.isWeaponReady(Constants.WEAPON_SELECT_TORP_I)) {
-            this.informer.setCommand("Выбрана торпеда типа I. Кликните для выбора цели.");
-          } else {
-            this.informer.setCommandAlarm("Торпеда типа I не готова к запуску!");
-          }
-        }
-        break;
+      // Выбор оружия (оставляем q для удобства, но можно и только по keyCode)
+      case 'q': // Intentional fall-through to keyCode check if needed, or handle directly
+        // Логика для 'q' уже ниже по keyCode, либо можно ее сюда перенести полностью
+        // Для чистоты, если хотим ТОЛЬКО по keyCode, этот case 'q' можно убрать,
+        // а всю логику для Q поместить в switch(keyCode) или в if/else if ниже.
+        // Пока оставим так, подразумевая, что основная логика Q будет по keyCode.
+        break; // Пустой case, если основная обработка Q будет по keyCode
         
       case 'w':
-      case 'W':
         // Торпеда II
         this.weaponSelect = Constants.WEAPON_SELECT_TORP_II;
         this.inputTextState = MainScene.ST_SELECT_TORP_WAY_POINT;
@@ -952,8 +1008,11 @@ export class MainScene extends Phaser.Scene {
         break;
         
       case 'e':
-      case 'E':
         // Торпеда III (самонаводящаяся)
+        // If we are in torpedo targeting mode, pressing E should cancel it first
+        if (this.playerControlState === PlayerControlState.SELECTING_TORPEDO_TARGET) {
+            this.cancelTorpedoTargeting();
+        }
         this.weaponSelect = Constants.WEAPON_SELECT_TORP_III;
         this.inputTextState = MainScene.ST_SELECT_TORP_WAY_POINT;
         if (this.informer) {
@@ -965,25 +1024,64 @@ export class MainScene extends Phaser.Scene {
         }
         break;
         
-      // Отмена текущего действия
-      case 'Escape':
-        this.inputTextState = MainScene.ST_UNKNOWN;
-        this.weaponSelect = Constants.WEAPON_SELECT_UNKNOWN;
-        if (this.informer) this.informer.setCommand("Выбор отменен");
+      case 'escape':
+        // --- MODIFIED: General Escape Logic ---
+        // This is now handled above if in SELECTING_TORPEDO_TARGET state by event.key or keyCode.
+        // If not in targeting mode, then do the original inputTextState reset.
+        if (this.playerControlState !== PlayerControlState.SELECTING_TORPEDO_TARGET) {
+            this.inputTextState = MainScene.ST_UNKNOWN;
+            this.weaponSelect = Constants.WEAPON_SELECT_UNKNOWN;
+            if (this.informer) this.informer.setCommand("Выбор отменен");
+        }
+        // --- END MODIFIED ---
         break;
       
       default:
-        // Обработка по keyCode для совместимости со старыми браузерами
-        const keyCode = event.keyCode || event.which;
-        if (keyCode === 37) { // Левая стрелка
-          console.log('Обработка стрелки влево по keyCode');
-          this.handleArrowLeft();
-        } else if (keyCode === 39) { // Правая стрелка
-          console.log('Обработка стрелки вправо по keyCode');
-          this.handleArrowRight();
-        }
-        break;
+        // Если по event.key не нашли, или для клавиш без стандартного event.key (как стрелки в старых браузерах)
+        // или если мы хотим специфичную логику по keyCode для Q.
+        break; // Просто выходим из switch(key)
     }
+
+    // Дополнительная обработка по keyCode, особенно для Q и стрелок, если нужно
+    // Это позволяет иметь и буквенные значения в switch(key) и числовые здесь.
+    if (keyCode === 81) { // Key Q
+        // --- MODIFIED: Torpedo Targeting Logic for Q (now by keyCode) ---
+        if (this.myShip instanceof Submarine && this.myShip.getTorpOnBoard(Constants.WEAPON_SELECT_TORP_I) > 0) { 
+          this.playerControlState = PlayerControlState.SELECTING_TORPEDO_TARGET;
+          if (this.informer) this.informer.setCommand("TORPEDO AIM: SELECT TARGET (Enter/LMB)"); 
+          
+          if (!this.torpedoTargetCursor) {
+            this.torpedoTargetCursor = this.add.graphics();
+            this.torpedoTargetCursor.setDepth(Constants.DEPTH_UI_ELEMENTS + 1); 
+          }
+          this.torpedoTargetCursor.setVisible(true);
+
+          if (!this.torpedoAimingLine) {
+            this.torpedoAimingLine = this.add.graphics();
+            this.torpedoAimingLine.setDepth(Constants.DEPTH_UI_ELEMENTS); 
+          }
+          this.torpedoAimingLine.setVisible(true);
+          
+          this.updateTorpedoTargetCursor(this.input.activePointer.worldX, this.input.activePointer.worldY);
+          
+          this.weaponSelect = Constants.WEAPON_SELECT_TORP_I;
+
+        } else if (this.informer) {
+            if (!(this.myShip instanceof Submarine)) {
+                this.informer.setCommandAlarm("Только подлодки могут использовать этот режим прицеливания.");
+            } else {
+                this.informer.setCommandAlarm("Торпеды типа I отсутствуют или не готовы!");
+            }
+        }
+        // --- END MODIFIED ---
+    } else if (keyCode === 37 && (key === 'arrowleft' || key === 'left')) { // Левая стрелка (дублируем из switch(key) для надежности или если switch(key) убран)
+        console.log('Обработка стрелки влево по keyCode');
+        this.handleArrowLeft();
+    } else if (keyCode === 39 && (key === 'arrowright' || key === 'right')) { // Правая стрелка
+        console.log('Обработка стрелки вправо по keyCode');
+        this.handleArrowRight();
+    }
+    // Другие обработки по keyCode, если необходимы
   }
   
   /**
@@ -1487,14 +1585,82 @@ export class MainScene extends Phaser.Scene {
     console.log(`Выбран для информера: ${vehicle ? vehicle.constructor.name + ' ID ' + vehicle.id : 'null'}`);
   }
 
+  // --- START: Added Torpedo Targeting Methods ---
+  private cancelTorpedoTargeting() {
+    this.playerControlState = PlayerControlState.NORMAL;
+    if (this.torpedoTargetCursor) {
+      this.torpedoTargetCursor.clear(); // Clear graphics before hiding
+      this.torpedoTargetCursor.setVisible(false);
+    }
+    if (this.torpedoAimingLine) {
+      this.torpedoAimingLine.clear(); // Clear graphics before hiding
+      this.torpedoAimingLine.setVisible(false);
+    }
+    if (this.informer) this.informer.setCommand("Targeting cancelled. Ready."); // Changed to setCommand and cleared message
+    console.log("[MainScene] Torpedo targeting cancelled.");
+  }
+
+  private updateTorpedoTargetCursor(phaserX: number, phaserY: number) {
+    if (!this.myShip) return;
+
+    if (this.torpedoTargetCursor && this.torpedoTargetCursor.visible) {
+      const size = 15; // Size of the crosshair
+      this.torpedoTargetCursor.clear();
+      this.torpedoTargetCursor.lineStyle(2, 0x00FFFF, 1); // Cyan color for the crosshair
+      this.torpedoTargetCursor.beginPath();
+      this.torpedoTargetCursor.moveTo(phaserX - size, phaserY);
+      this.torpedoTargetCursor.lineTo(phaserX + size, phaserY);
+      this.torpedoTargetCursor.moveTo(phaserX, phaserY - size);
+      this.torpedoTargetCursor.lineTo(phaserX, phaserY + size);
+      this.torpedoTargetCursor.strokePath();
+    }
+    if (this.torpedoAimingLine && this.torpedoAimingLine.visible && this.playerControlState === PlayerControlState.SELECTING_TORPEDO_TARGET) {
+        this.torpedoAimingLine.clear();
+        this.torpedoAimingLine.lineStyle(1, 0x00FFFF, 0.5); // Thin, semi-transparent cyan line
+        this.torpedoAimingLine.beginPath();
+        // Ensure myShip coordinates are up-to-date Phaser world coordinates
+        const shipPhaserPos = this.myShip.getPosition(); 
+        this.torpedoAimingLine.moveTo(shipPhaserPos.x, shipPhaserPos.y);
+        this.torpedoAimingLine.lineTo(phaserX, phaserY);
+        this.torpedoAimingLine.strokePath();
+    }
+  }
+  // --- END: Added Torpedo Targeting Methods ---
+
   // Уничтожаем и графику сетки при уничтожении сцены
   destroy() {
     if (this.gridGraphics) {
         this.gridGraphics.destroy();
         this.gridGraphics = null;
     }
+    // Destroy torpedo targeting graphics if they exist
+    if (this.torpedoTargetCursor) {
+        this.torpedoTargetCursor.destroy();
+        this.torpedoTargetCursor = null;
+    }
+    if (this.torpedoAimingLine) {
+        this.torpedoAimingLine.destroy();
+        this.torpedoAimingLine = null;
+    }
     // Здесь нужно вызвать super.destroy() или убедиться, что Phaser это делает.
     // В GameObject.destroy() есть параметр removeFromScene, но для Scene его нет.
     // Обычно Phaser сам управляет уничтожением объектов сцены.
+  }
+
+  /**
+   * Method to be called by Submarine (or other ships) when it creates a torpedo directly.
+   * This ensures the torpedo is added to the scene and relevant tracking arrays.
+   * @param torpedo The torpedo instance to register.
+   */
+  public registerCreatedTorpedo(torpedo: Torpedo): void {
+    this.add.existing(torpedo); // Add to scene for rendering and updates
+
+    // Add to specific tracking arrays based on forces
+    if (torpedo.getForces() === Constants.FORCES_RED) {
+      this.redTorpedos.push(torpedo);
+    } else {
+      this.whiteTorpedos.push(torpedo);
+    }
+    console.log(`[MainScene] Torpedo ${torpedo.id} registered. Forces: ${torpedo.getForces() === Constants.FORCES_RED ? 'RED' : 'WHITE'}`);
   }
 } 

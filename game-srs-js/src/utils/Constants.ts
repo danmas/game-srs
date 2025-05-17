@@ -61,14 +61,16 @@ export class Constants {
   static readonly WP_TYPE_CONVOY: number = 2;   // Движение в составе конвоя
   static readonly WP_TYPE_MANEUVER: number = 3; // Маневр (например, уклонение от торпеды)
   static readonly WP_TYPE_TARGET: number = 4;   // Точка на конкретной цели (замена старого WP_TARGET)
-  // static readonly WP_TYPE_TORPEDO_TARGET: number = 5; // Если понадобится специальный тип для цели торпеды
+  static readonly WP_TYPE_TORPEDO_TARGET: number = 100; // Specific for player-aimed torpedo Type I - ADDED
 
   // Глубины отображения (Z-index)
   static readonly DEPTH_GRID: number = -99;
   static readonly DEPTH_WAYPOINT: number = -50; // Путевые точки выше сетки, но ниже кораблей
   static readonly DEPTH_VEHICLE_DEFAULT: number = 0;
-  static readonly DEPTH_NOISE_CIRCLES: number = -1; // Под кораблем
+  static readonly DEPTH_NOISE_CIRCLES: number = 25;
   static readonly DEPTH_UI_BASE: number = 100; // Базовая глубина для UI элементов
+  static readonly DEPTH_TEXT_INFO: number = 30;
+  static readonly DEPTH_UI_ELEMENTS: number = 50; // ADDED - For torpedo cursor and aiming line
 
   // Глубины для подводной лодки (в метрах)
 } 

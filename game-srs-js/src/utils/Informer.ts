@@ -18,7 +18,7 @@ export class Informer {
   
   // Константы для стилей полей
   private readonly COMMAND_HEIGHT: number = 22;
-  private readonly COMMAND_WIDTH: number = 400;
+  private readonly COMMAND_WIDTH: number = 900;
   private readonly COMMAND_COLOR: number = 0xFFFFFF;
   
   private readonly LBL_WIDTH: number = 50;
@@ -211,7 +211,7 @@ export class Informer {
    * Создает командную строку
    */
   private setupCommandText(): void {
-    this.commandText = this.scene.add.text(400, Settings.SCREEN_HEIGHT-375/* - this.COMMAND_HEIGHT*/, '', {
+    this.commandText = this.scene.add.text(200, Settings.SCREEN_HEIGHT-375/* - this.COMMAND_HEIGHT*/, '', {
       fontSize: `${this.FIELD_TEXT_SIZE}px`,
       fontFamily: 'Courier',
       color: this.FIELD_TEXT_COLOR,
@@ -403,7 +403,7 @@ export class Informer {
    * @param rudder Положение руля
    */
   public setRudder(rudder: string): void {
-    console.log(`Informer.setRudder called with: ${rudder}`);
+    // console.log(`Informer.setRudder called with: ${rudder}`);
     
     try {
       // Проверяем наличие поля RUD
@@ -432,7 +432,7 @@ export class Informer {
       
       // Устанавливаем текст руля
       this.fields[this.RUD].setText(rudder);
-      console.log(`Rudder indicator successfully updated to: ${rudder}`);
+      // console.log(`Rudder indicator successfully updated to: ${rudder}`);
     } catch (error) {
       console.error('Ошибка при обновлении руля:', error);
     }

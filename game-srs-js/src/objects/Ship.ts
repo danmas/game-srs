@@ -252,6 +252,24 @@ export class Ship extends Vehicle {
   }
   
   /**
+   * Уменьшает количество торпед на борту
+   * @param weaponType Тип оружия
+   */
+  public decrementTorpCount(weaponType: number): void {
+    switch (weaponType) {
+      case Constants.WEAPON_SELECT_TORP_I:
+        if (this.torpedoOnBoardI > 0) this.torpedoOnBoardI--;
+        break;
+      case Constants.WEAPON_SELECT_TORP_II:
+        if (this.torpedoOnBoardII > 0) this.torpedoOnBoardII--;
+        break;
+      case Constants.WEAPON_SELECT_TORP_III:
+        if (this.torpedoOnBoardIII > 0) this.torpedoOnBoardIII--;
+        break;
+    }
+  }
+  
+  /**
    * Обрабатывает попадание в корабль
    * @param damage Нанесенный урон
    */
