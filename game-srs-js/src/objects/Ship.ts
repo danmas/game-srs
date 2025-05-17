@@ -4,6 +4,7 @@ import { Constants } from '../utils/Constants';
 import { Settings } from '../utils/Settings';
 import { TorpedoParams } from './TorpedoParams';
 import { Torpedo } from './Torpedo';
+import { MainScene } from '../scenes/MainScene';
 
 /**
  * Класс корабля - базовый класс для всех кораблей и подводных лодок
@@ -41,6 +42,9 @@ export class Ship extends Vehicle {
     
     // Устанавливаем принадлежность
     this.setForces(forces);
+    
+    // Устанавливаем базовую шумность для надводного корабля
+    this.intrinsicNoisiness = 1.5; // Корабли немного шумнее базового Vehicle
     
     // Устанавливаем пониженную маневренность для кораблей (70%)
     this.manevr_prc = 70;
@@ -101,7 +105,14 @@ export class Ship extends Vehicle {
    * Обрабатывает клик по кораблю
    */
   protected onClick(): void {
-    this.setSelected(true);
+    // Визуально выделяем корабль
+    this.setSelected(true); 
+
+    // Сообщаем главной сцене, что этот корабль теперь выбран для информера
+    const mainScene = this.scene as MainScene; // Используем явное приведение типа, если MainScene импортирована
+    if (mainScene && typeof mainScene.setSelectedVehicleForInformer === 'function') {
+      mainScene.setSelectedVehicleForInformer(this);
+    }
   }
   
   /**
@@ -478,31 +489,20 @@ export class Ship extends Vehicle {
   }
   
   /**
-   * Получает уровень шума корабля
-   * Используется для определения обнаружения корабля
+   * Получает уровень шума корабля.
+   * Этот метод теперь соответствует новой системе, унаследованной от Vehicle.
+   * Если у Ship есть специфические модификаторы к "конечной силе шума",
+   * их можно добавить здесь, вызвав super.getNoiseStrength() или this.getSourceNoiseLevel().
+   * В данном случае, предполагаем, что Ship не добавляет таких модификаторов,
+   * поэтому он может либо наследовать getNoiseStrength от Vehicle,
+   * либо для ясности явно вызывать this.getSourceNoiseLevel().
    */
-  public getNoiseStrength(): number {
-    // Базовый шум зависит от скорости корабля
-    const baseNoise = this.getSpeed() / this.maxVelocity * 100;
-    
-    // Коэффициент шумности корабля (зависит от типа)
-    const noiseCoefficient = 1.0;  // Базовый коэффициент для корабля
-    
-    return baseNoise * noiseCoefficient;
-  }
-  
-  /**
-   * Рассчитывает шум на заданном расстоянии
-   * @param distance Расстояние до корабля
-   */
-  public calcNoiseAtDist(distance: number): number {
-    const noise = this.getNoiseStrength();
-    
-    // Затухание шума с расстоянием (обратно пропорционально квадрату расстояния)
-    if (distance <= 10) {
-      return noise;  // На малых расстояниях шум не затухает
-    }
-    
-    return noise / (Math.pow(distance / 100, 2));
+  public override getNoiseStrength(): number {
+    // Для корабля просто возвращаем его уровень шума у источника.
+    // Специфические модификаторы (если есть) должны быть в getSourceNoiseLevel()
+    // или, если они влияют на конечную силу, добавлены здесь.
+    // Сейчас Ship не имеет таких, так что это эквивалентно наследованию от Vehicle,
+    // если Vehicle.getNoiseStrength() возвращает this.getSourceNoiseLevel().
+    return this.getSourceNoiseLevel(); 
   }
 } 

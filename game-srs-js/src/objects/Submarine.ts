@@ -231,14 +231,22 @@ export class Submarine extends Ship {
    * Переопределяем метод получения шума
    */
   public getNoiseStrength(): number {
-    // Базовый шум от корабля
-    let noise = super.getNoiseStrength();
+    // Базовый шум от корабля (теперь получаем через getSourceNoiseLevel родителя)
+    let sourceNoise = super.getSourceNoiseLevel();
     
     // Уменьшаем шум в зависимости от глубины
     // Чем глубже, тем тише
+    // Коэффициент 0.7 означает, что на максимальной глубине шум будет 1 - 0.7 = 0.3 от исходного
     const depthFactor = 1 - (this.depth / this.maxDepth) * 0.7;
     
-    return noise * depthFactor;
+    // Дополнительные модификаторы, если перископ опущен и лодка на глубине
+    // Например, если перископ опущен (т.е. глубина > 0), можно дополнительно снизить шум
+    let periscopeFactor = 1.0;
+    if (!this.periscope && this.depth > 0) {
+      periscopeFactor = 0.8; // Снижаем шум на 20%, если перископ опущен и есть глубина
+    }
+
+    return sourceNoise * depthFactor * periscopeFactor;
   }
   
   /**

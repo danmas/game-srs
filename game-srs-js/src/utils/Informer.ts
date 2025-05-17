@@ -37,7 +37,7 @@ export class Informer {
   private readonly R_FIELD_TEXT_BGCOLOR: string = '#1E90FF';
   private readonly R_ALPHA: number = 0.8;
   
-  private readonly TF_FIELD_HEIGHT: number = 200;
+  private readonly TF_FIELD_HEIGHT: number = 300;
   private readonly TF_FIELD_WIDTH: number = 300;
   private readonly TF_FIELD_TEXT_SIZE: number = 20;
   private readonly TF_FIELD_TEXT_COLOR: string = '#ffff00';
@@ -528,6 +528,8 @@ export class Informer {
       });
       field.setFixedSize(this.R_FIELD_WIDTH, this.R_FIELD_HEIGHT);
       field.setAlpha(this.R_ALPHA);
+      field.setScrollFactor(0);
+      field.setDepth(100);
       
       // Создаем метку (слева от значения)
       const label = this.scene.add.text(0, y, fieldName, {
@@ -539,6 +541,8 @@ export class Informer {
       });
       label.setFixedSize(this.R_LBL_WIDTH, this.R_FIELD_HEIGHT);
       label.setAlpha(this.R_ALPHA);
+      label.setScrollFactor(0);
+      label.setDepth(100);
       
       // Устанавливаем позиции (справа экрана)
       field.setX(Settings.SCREEN_WIDTH - field.width - 2);
@@ -713,9 +717,9 @@ export class Informer {
     
     // Ограничиваем количество строк в тексте
     const lines = traceMsg.split('\n');
-    if (lines.length > 10) {
-      // Если больше 10 строк, оставляем только последние 10
-      this.traceText.setText(lines.slice(0, 10).join('\n'));
+    if (lines.length > 15) {
+      // Если больше 15 строк, оставляем только последние 15
+      this.traceText.setText(lines.slice(0, 15).join('\n'));
     } else {
       this.traceText.setText(traceMsg);
     }

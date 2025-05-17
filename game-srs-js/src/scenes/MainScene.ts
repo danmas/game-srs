@@ -66,6 +66,8 @@ export class MainScene extends Phaser.Scene {
   private dragStartX: number = 0;
   private dragStartY: number = 0;
   
+  public selectedVehicleForInformer: Vehicle | null = null;
+  
   /**
    * Конструктор
    */
@@ -197,19 +199,21 @@ export class MainScene extends Phaser.Scene {
       this.scenarioManager.loadScenario('scenario1');
       this.scenarioManager.showMissionGoal();
       
-      // Центрируем камеру на позиции игрока
+      // Центрируем камеру на позиции игрока и устанавливаем myShip как выбранный для информера
       if (this.myShip) {
         const pos = this.myShip.getPosition();
         this.cameras.main.centerOn(pos.x, pos.y);
+        this.setSelectedVehicleForInformer(this.myShip);
       }
     } else {
       // Если менеджер сценариев недоступен, используем стандартное создание объектов
       this.createDefaultObjects();
       
-      // Центрируем камеру на позиции игрока
+      // Центрируем камеру на позиции игрока и устанавливаем myShip как выбранный для информера
       if (this.myShip) {
         const pos = this.myShip.getPosition();
         this.cameras.main.centerOn(pos.x, pos.y);
+        this.setSelectedVehicleForInformer(this.myShip);
       }
     }
     
@@ -348,19 +352,65 @@ export class MainScene extends Phaser.Scene {
     if (this.informer) {
       this.informer.onSlowLoop(time);
       
-      // Добавляем отладочную информацию о позиции подводной лодки
-      if (this.myShip) {
-        const pos = this.myShip.getPosition();
-        this.informer.writeDebugText(`Позиция: X=${Math.floor(pos.x)}, Y=${Math.floor(pos.y)}`);
-        
-        if (this.myShip instanceof Submarine) {
-          this.informer.writeDebugText(`Глубина: ${(this.myShip as Submarine).getDepth()} м`);
-          this.informer.writeDebugText(`Перископ: ${(this.myShip as Submarine).periscope ? 'поднят' : 'опущен'}`);
-        }
-        
-        // Добавляем отладочную информацию о позиции камеры
+      // Обновляем общую информацию в информере (не зависит от selectedVehicleForInformer)
+      // Например, отладочная информация о камере и масштабе
+      if (Settings.DEBUG) {
         this.informer.writeDebugText(`Камера: X=${Math.floor(this.cameras.main.scrollX)}, Y=${Math.floor(this.cameras.main.scrollY)}`);
         this.informer.writeDebugText(`Масштаб: ${this.zoom.toFixed(2)}`);
+      }
+
+      // Обновляем информацию о шуме и другие данные для selectedVehicleForInformer
+      if (this.selectedVehicleForInformer) {
+        const vehicle = this.selectedVehicleForInformer;
+        const pos = vehicle.getPosition();
+        this.informer.writeDebugText(`Выбран: ID ${vehicle.id}, ${vehicle.constructor.name}`);
+        this.informer.writeDebugText(`Позиция: X=${Math.floor(pos.x)}, Y=${Math.floor(pos.y)}`);
+        
+        if (vehicle instanceof Submarine) {
+          this.informer.writeDebugText(`Глубина: ${(vehicle as Submarine).getDepth()} м`);
+          this.informer.writeDebugText(`Перископ: ${(vehicle as Submarine).periscope ? 'поднят' : 'опущен'}`);
+        }
+        
+        // Отображение шума для selectedVehicleForInformer
+        const noiseVal = vehicle.getNoiseStrength();
+        this.informer.writeRightField("NOISE", noiseVal.toFixed(2));
+
+        // Если selectedVehicleForInformer это myShip, обновляем специфичные для него данные
+        if (vehicle === this.myShip) {
+            this.informer.setSpeed(this.myShip.getSpeed());
+            this.informer.setDirection(this.myShip.getDirection().toString());
+            this.informer.setPower(this.myShip.getPower().toString());
+             // Обновляем индикаторы торпед
+            this.informer.panelLampReadyNotReady(
+                Constants.LAMP_TRPRD_I, 
+                this.myShip.isWeaponReady(Constants.WEAPON_SELECT_TORP_I)
+            );
+            this.informer.panelLampReadyNotReady(
+                Constants.LAMP_TRPRD_II, 
+                this.myShip.isWeaponReady(Constants.WEAPON_SELECT_TORP_II)
+            );
+            this.informer.panelLampReadyNotReady(
+                Constants.LAMP_TRPRD_III, 
+                this.myShip.isWeaponReady(Constants.WEAPON_SELECT_TORP_III)
+            );
+             // Обновляем индикатор наличия точек маршрута
+            if (this.myShip.hasWayPoints()) {
+                this.informer.panelLampActive(Constants.LAMP_WP);
+            } else {
+                this.informer.panelLampOff(Constants.LAMP_WP);
+            }
+            // Проверяем наличие торпед в радиусе атаки
+            const hasEnemyTorpedosNearby = this.checkEnemyTorpedosNearby();
+            if (hasEnemyTorpedosNearby) {
+                this.informer.panelLampBlinkAlarmWarning(Constants.LAMP_TRP_ATACK);
+            } else {
+                this.informer.panelLampOff(Constants.LAMP_TRP_ATACK);
+            }
+        }
+
+      } else {
+        // Если ничего не выбрано, очищаем поле шума или ставим прочерк
+        this.informer.writeRightField("NOISE", "--");
       }
     }
     
@@ -508,8 +558,36 @@ export class MainScene extends Phaser.Scene {
    * @param pointer Указатель мыши
    */
   private handlePointerDown(pointer: Phaser.Input.Pointer): void {
+    // Координаты щелчка в мире игры
+    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const x = worldPoint.x;
+    const y = worldPoint.y;
+
+    // Попробуем найти объект под курсором
+    let clickedObject: Vehicle | null = null;
+    const allVehicles: Vehicle[] = [...this.whiteShips, ...this.redShips, ...this.whiteTorpedos, ...this.redTorpedos];
+    
+    for (const vehicle of allVehicles) {
+        // Простая проверка попадания в прямоугольник спрайта
+        // Для более точного определения можно использовать vehicle.getBounds()
+        if (vehicle.getBounds().contains(x,y)) {
+            clickedObject = vehicle;
+            break; 
+        }
+    }
+
+    if (clickedObject) {
+        this.setSelectedVehicleForInformer(clickedObject);
+        // Если у объекта есть метод onClick, вызываем его
+        if (typeof (clickedObject as any).onClick === 'function') {
+            (clickedObject as any).onClick();
+        }
+    }
+
+
     // Начинаем перетаскивание камеры, только если это левая кнопка мыши
-    if (pointer.leftButtonDown()) {
+    // и если не был кликнут объект (чтобы не мешать выбору)
+    if (pointer.leftButtonDown() && !clickedObject) {
       this.isDragging = true;
       this.dragStartX = pointer.x;
       this.dragStartY = pointer.y;
@@ -518,10 +596,6 @@ export class MainScene extends Phaser.Scene {
     if (this.gameState !== MainScene.STARTED || !this.myShip) {
       return;
     }
-    
-    // Координаты щелчка
-    const x = pointer.x;
-    const y = pointer.y;
     
     // Обработка щелчка в зависимости от состояния
     switch (this.inputTextState) {
@@ -896,8 +970,8 @@ export class MainScene extends Phaser.Scene {
     // Создаем подлодку игрока
     const ship = new Submarine(this, x, y, forces);
     ship.setUnderControl(true);
-    ship.setSelected(true);
-    
+    // ship.setSelected(true); // setSelected будет управляться через setSelectedVehicleForInformer
+
     // Принудительная перерисовка для правильного отображения
     if (ship instanceof Submarine) {
       (ship as Submarine).drawVehicle();
@@ -914,8 +988,9 @@ export class MainScene extends Phaser.Scene {
       this.whiteShips.push(ship);
     }
     
-    // Устанавливаем как управляемый корабль
+    // Устанавливаем как управляемый корабль и выбранный для информера
     this.myShip = ship;
+    this.setSelectedVehicleForInformer(ship);
     
     return ship;
   }
@@ -1285,5 +1360,27 @@ export class MainScene extends Phaser.Scene {
     this.uiCamera.ignore(gameObjects);
     
     console.log(`Настроены камеры: UI элементов - ${uiElements.length}, игровых объектов - ${gameObjects.length}`);
+  }
+  
+  /**
+   * Устанавливает выбранный для отображения в информере объект.
+   * @param vehicle Объект Vehicle или null, если ничего не выбрано.
+   */
+  public setSelectedVehicleForInformer(vehicle: Vehicle | null): void {
+    // Сбрасываем флаг setSelected у предыдущего выбранного объекта, если он был
+    if (this.selectedVehicleForInformer && this.selectedVehicleForInformer !== vehicle) {
+      this.selectedVehicleForInformer.setSelected(false);
+    }
+
+    this.selectedVehicleForInformer = vehicle;
+
+    // Устанавливаем флаг setSelected у нового объекта
+    if (this.selectedVehicleForInformer) {
+      this.selectedVehicleForInformer.setSelected(true);
+    }
+
+    // Можно добавить дополнительную логику, например, центрирование камеры на выбранном объекте,
+    // или обновление специфичных частей UI.
+    console.log(`Выбран для информера: ${vehicle ? vehicle.constructor.name + ' ID ' + vehicle.id : 'null'}`);
   }
 } 

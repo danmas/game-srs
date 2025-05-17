@@ -10,7 +10,7 @@ export class Settings {
   static readonly SCENARIO_SCORE_NAME: string = Settings.CURRENT_SCENARIO;
   
   // Флаги отладки
-  static readonly DEBUG: boolean = false;
+  static readonly DEBUG: boolean = true;
   static readonly DRAW_REAL_WORLD: boolean = true;
   static readonly CHEAT: boolean = false;
   static readonly DRAW_TORPED_CALC: boolean = false;
@@ -84,6 +84,9 @@ export class Settings {
   
   // Настройки для точек маршрута и хвоста
   static readonly WAY_POINT_COLOR: number = 0xFFFF00;
+  
+  // Максимальная дальность обнаружения (используется как "бесконечность" для некоторых расчетов)
+  static readonly MAX_DETECTION_RANGE: number = 20000; // Произвольное большое значение
   
   // Отладочный вывод значения коэффициента
   static {

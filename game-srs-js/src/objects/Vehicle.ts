@@ -56,6 +56,9 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
   // Маневренность в процентах (100 - торпеды и катера, 50-80 - корабли)
   protected manevr_prc: number = 100;
   
+  // Базовая шумность объекта, может переопределяться в дочерних классах
+  public intrinsicNoisiness: number = 1.0;
+
   /**
    * Конструктор
    * @param scene Сцена, к которой принадлежит объект
@@ -604,5 +607,80 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
    */
   public getRudder(): number {
     return this.rudder;
+  }
+
+  /**
+   * Возвращает коэффициент мощности для расчета шума.
+   * @returns Коэффициент, зависящий от текущей мощности двигателя.
+   */
+  protected getPowerFactorForNoise(): number {
+    const absPower = Math.abs(this.power);
+    // Значения подобраны на основе анализа calcNoise из VehicleMoving.as
+    // где для POWER_0 был 0.05, для POWER_1 0.2, для POWER_2 1.0,
+    // а для остальных, похоже, использовалось само значение мощности (или его модуль).
+    // Для отрицательных мощностей (реверс) шум должен быть аналогичен.
+    if (absPower === Vehicle.POWER_0) return 0.05;
+    if (absPower === Vehicle.POWER_1) return 0.2;
+    if (absPower === Vehicle.POWER_2) return 1.0;
+    if (absPower === Vehicle.POWER_3) return 3.0;
+    if (absPower === Vehicle.POWER_4) return 4.0;
+    if (absPower === Vehicle.POWER_5) return 5.0;
+    if (absPower === Vehicle.POWER_6) return 6.0;
+    return 0; // На всякий случай, если мощность будет вне диапазона
+  }
+
+  /**
+   * Рассчитывает базовый уровень шума, производимого объектом у источника,
+   * до учета затухания с расстоянием и специфических модификаторов (например, глубины для подлодок).
+   * Теперь также учитывает текущую скорость относительно максимальной для данной мощности.
+   * @returns Базовый уровень шума у источника.
+   */
+  public getSourceNoiseLevel(): number {
+    const noisy = this.intrinsicNoisiness; 
+    const powerSettingFactor = this.getPowerFactorForNoise(); 
+
+    if (this.getSpeed() < 0.1 && this.power === Vehicle.POWER_0) {
+      return (3 * noisy * 1000000 * 0.05) / 36; // Минимальный шум для POWER_0 и стоянки
+    }
+
+    // Максимальная скорость для текущей *установки* мощности (может быть 0, если мощность POWER_0)
+    const maxSpeedForCurrentPowerSetting = (this.power === Vehicle.POWER_0) ? 0 : (this.power / Vehicle.POWER_6) * this.maxVelocity;
+
+    let speedRatio = 0;
+    if (maxSpeedForCurrentPowerSetting > 0.1) {
+      // Рассчитываем долю текущей скорости от максимальной для данной мощности
+      speedRatio = Phaser.Math.Clamp(this.getSpeed() / maxSpeedForCurrentPowerSetting, 0, 1);
+    } else if (this.power > Vehicle.POWER_0 && this.getSpeed() > 0.1) {
+      // Если мощность задана (не P0), но макс. скорость для нее почти 0 (напр. P1), а корабль еще движется.
+      // В этом случае, пусть шум будет основан на powerSettingFactor, так как он уже мал для низких мощностей.
+      speedRatio = 1.0; 
+    } else if (this.power === Vehicle.POWER_0 && this.getSpeed() > 0.1) {
+      // Если мощность P0, но корабль еще движется по инерции, шум должен быть минимальным
+      speedRatio = 0; // Это приведет к использованию Math.max(0, 0.05) ниже, что даст шум POWER_0
+    }
+    
+    // Итоговый фактор, учитывающий и настройку мощности, и фактическую скорость.
+    const scaledPowerFactor = powerSettingFactor * speedRatio;
+    
+    // Гарантируем минимальный шум работающего двигателя (эквивалент POWER_0), если мощность не 0, 
+    // но scaledPowerFactor оказался меньше из-за очень низкой скорости.
+    // Если мощность POWER_0, то scaledPowerFactor будет 0, и Math.max возьмет 0.05.
+    // Если мощность > POWER_0 и scaledPowerFactor > 0.05, возьмется scaledPowerFactor.
+    // Если мощность > POWER_0 и scaledPowerFactor < 0.05 (очень медленно едет), возьмется 0.05.
+    const finalNoiseFactor = (this.power > Vehicle.POWER_0) ? Math.max(scaledPowerFactor, 0.05) : (this.getSpeed() < 0.1 ? 0.05 : scaledPowerFactor) ;
+
+    return (3 * noisy * 1000000 * finalNoiseFactor) / 36;
+  }
+
+  /**
+   * Возвращает конечную "силу" шума объекта, которую будут "слышать" другие.
+   * Этот метод может быть переопределен в дочерних классах (например, Submarine)
+   * для добавления специфических модификаторов (глубина, состояние перископа и т.д.).
+   * @returns Эффективная сила шума объекта.
+   */
+  public getNoiseStrength(): number {
+    // По умолчанию просто возвращаем базовый уровень шума от источника.
+    // Дочерние классы могут добавить сюда свои модификаторы.
+    return this.getSourceNoiseLevel();
   }
 } 

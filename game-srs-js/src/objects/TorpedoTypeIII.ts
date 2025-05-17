@@ -5,6 +5,7 @@ import { Ship } from './Ship';
 import { Constants } from '../utils/Constants';
 import { Settings } from '../utils/Settings';
 import { TorpedoParams } from './TorpedoParams';
+import { PhysicsUtils } from '../utils/PhysicsUtils';
 
 /**
  * Торпеда Тип III - самонаводящаяся торпеда, ищущая цели по шуму
@@ -123,7 +124,7 @@ export class TorpedoTypeIII extends Torpedo {
       // Если корабль в пределах диапазона обнаружения
       if (dist < this.noiseDetectionRange) {
         // Получаем уровень шума корабля с учетом расстояния
-        const noise = ship.calcNoiseAtDist(dist);
+        const noise = PhysicsUtils.getReceivedNoiseLevel(ship, this.getPosition());
         
         // Если шум выше максимального, запоминаем корабль
         if (noise > maxNoise) {
