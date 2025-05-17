@@ -38,10 +38,10 @@ export class Scenario {
   protected coastData: Phaser.Math.Vector2[] = [];
   protected portLineData: Phaser.Math.Vector2[] = [];
   
-  // Стартовая позиция
-  protected START_X: number = 350;
-  protected START_Y: number = 350;
-  protected startPosition: Phaser.Math.Vector2;
+  // Стартовая позиция (теперь логические координаты, 0,0 - центр мира по умолчанию)
+  protected START_X: number = 0;
+  protected START_Y: number = 0;
+  protected startPosition: Phaser.Math.Vector2; // Будет хранить логические координаты
   
   // Данные для счета
   protected name: string = "";
@@ -70,6 +70,7 @@ export class Scenario {
     this.scene = scene;
     this.name = name;
     this.scoreName = name;
+    // startPosition инициализируется логическими START_X, START_Y
     this.startPosition = new Phaser.Math.Vector2(this.START_X, this.START_Y);
   }
   
@@ -108,8 +109,12 @@ export class Scenario {
     this.coastData = [];
     this.portLineData = [];
     
-    this.START_X = 350;
-    this.START_Y = 350;
+    // Сбрасываем на логический центр
+    this.START_X = 0;
+    this.START_Y = 0;
+    if (this.startPosition) { // Обновляем и startPosition, если она уже создана
+        this.startPosition.set(this.START_X, this.START_Y);
+    }
     
     this.name = "";
     this.score = 0;

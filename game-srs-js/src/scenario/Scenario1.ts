@@ -8,6 +8,7 @@ import { Ship } from '../objects/Ship';
 import { Submarine } from '../objects/Submarine';
 import { MainScene } from '../scenes/MainScene';
 import { Obstruction } from '../objects/Obstruction';
+import { CoordUtils } from '../utils/CoordUtils';
 
 /**
  * Первый сценарий игры - выход из порта и уничтожение вражеского корабля
@@ -32,21 +33,40 @@ export class Scenario1 extends Scenario {
     
     console.log('Scenario1: init начат');
     
-    // Устанавливаем стартовую позицию
-    this.START_X = 350;
-    this.START_Y = 350;
-    
+    // Устанавливаем стартовую логическую позицию для сценария (если нужно смещение от центра мира 0,0)
+    // Если сценарий должен быть строго в центре, эти START_X/Y можно оставить 0, как в базовом классе.
+    // Для примера, немного сместим стартовую область сценария влево-вверх от глобального центра.
+    this.START_X = -Settings.SCREEN_WIDTH / 2; // Логическая X координата начала сценария
+    this.START_Y = -Settings.SCREEN_HEIGHT / 2; // Логическая Y координата начала сценария
+    this.startPosition.set(this.START_X, this.START_Y); // Обновляем startPosition из базового класса
+        
     // Настраиваем бонусы
     this.bonusTimeGameSec = 5000;
     this.maxTimeLeavePortSec = 1000;
     
-    // Создаем подводную лодку игрока
-    const submarine = this.scene.createPlayerShip(40, 20, Constants.FORCES_WHITE) as Submarine;
+    // Задаем логические координаты для объектов относительно this.START_X, this.START_Y
+    // или абсолютные логические координаты, если START_X/Y = 0.
+    // Для примера, пусть координаты (40,20) и (1000,-100) будут логическими отн. центра мира.
+    const playerLogicalX = 40;
+    const playerLogicalY = 20;
+    const enemyShipLogicalX = 1000;
+    const enemyShipLogicalY = -100; // Оставим -100, если это было намеренно (например, за пределами видимости сначала)
+
+    // Создаем подводную лодку игрока, используя преобразованные координаты
+    const submarine = this.scene.createPlayerShip(
+      CoordUtils.logicalToPhaserX(playerLogicalX),
+      CoordUtils.logicalToPhaserY(playerLogicalY),
+      Constants.FORCES_WHITE
+    ) as Submarine;
     submarine.setName("L.A.");
     submarine.setDirection(90);
     
-    // Создаем вражеский корабль "Kashin"
-    const ship = this.scene.createEnemyShip(1000, -100, Constants.FORCES_RED);
+    // Создаем вражеский корабль "Kashin", используя преобразованные координаты
+    const ship = this.scene.createEnemyShip(
+      CoordUtils.logicalToPhaserX(enemyShipLogicalX),
+      CoordUtils.logicalToPhaserY(enemyShipLogicalY),
+      Constants.FORCES_RED
+    );
     ship.setDirection(250);
     ship.setPower(Vehicle.POWER_3);
     ship.setName("Kashin");
@@ -170,28 +190,33 @@ export class Scenario1 extends Scenario {
     const zoom = this.scene.getZoom();
     const koefCoast = Settings.koef_coast;
     
-    console.log(`Scenario1: масштаб=${zoom}, koefCoast=${koefCoast}`);
+    console.log(`Scenario1: koefCoast=${koefCoast}`);
     
     // Начинаем рисовать
     graphics.beginPath();
     
-    // Получаем первую точку
-    const firstPoint = this.coastData[0];
-    const startX = zoom * (firstPoint.x * koefCoast);
-    const startY = zoom * (firstPoint.y * koefCoast);
+    // Получаем первую точку (логическую, масштабированную koefCoast)
+    const firstLogicalX = this.coastData[0].x * koefCoast;
+    const firstLogicalY = this.coastData[0].y * koefCoast;
+    // Преобразуем в Phaser-координаты для отрисовки
+    const startPhaserX = CoordUtils.logicalToPhaserX(this.START_X + firstLogicalX); // Относительно логического старта сценария
+    const startPhaserY = CoordUtils.logicalToPhaserY(this.START_Y + firstLogicalY); // Относительно логического старта сценария
     
-    console.log(`Первая точка побережья: ${firstPoint.x}, ${firstPoint.y} -> ${startX}, ${startY}`);
+    console.log(`Первая точка побережья (лог): ${firstLogicalX}, ${firstLogicalY} -> Phaser: ${startPhaserX}, ${startPhaserY}`);
     
-    graphics.moveTo(startX, startY);
+    graphics.moveTo(startPhaserX, startPhaserY);
     
     // Добавляем все точки
     for (let i = 1; i < this.coastData.length; i++) {
-      const x = zoom * (this.coastData[i].x * koefCoast);
-      const y = zoom * (this.coastData[i].y * koefCoast);
-      graphics.lineTo(x, y);
+      const logicalX = this.coastData[i].x * koefCoast;
+      const logicalY = this.coastData[i].y * koefCoast;
+      // Преобразуем в Phaser-координаты для отрисовки
+      const phaserX = CoordUtils.logicalToPhaserX(this.START_X + logicalX); // Относительно логического старта сценария
+      const phaserY = CoordUtils.logicalToPhaserY(this.START_Y + logicalY); // Относительно логического старта сценария
+      graphics.lineTo(phaserX, phaserY);
       
       if (i % 10 === 0) {
-        console.log(`Точка побережья ${i}: ${this.coastData[i].x}, ${this.coastData[i].y} -> ${x}, ${y}`);
+        console.log(`Точка побережья ${i} (лог): ${logicalX}, ${logicalY} -> Phaser: ${phaserX}, ${phaserY}`);
       }
     }
     

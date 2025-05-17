@@ -16,8 +16,13 @@ export class Settings {
   static readonly DRAW_TORPED_CALC: boolean = false;
   
   // Настройки дисплея
-  static readonly SCREEN_WIDTH: number = 1100;
-  static readonly SCREEN_HEIGHT: number = 550;
+  static readonly SCREEN_WIDTH: number = 1100; // Размер видимого окна и UI
+  static readonly SCREEN_HEIGHT: number = 550; // Размер видимого окна и UI
+  
+  // Общие размеры игрового мира (могут быть больше SCREEN_WIDTH/HEIGHT)
+  static readonly GAME_WORLD_WIDTH: number = Settings.SCREEN_WIDTH * 10;
+  static readonly GAME_WORLD_HEIGHT: number = Settings.SCREEN_HEIGHT * 10;
+  
   static readonly SCALE_MAIN: number = 1.5;
   
   // Физика

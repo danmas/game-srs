@@ -13,6 +13,7 @@ import { Informer } from '../utils/Informer';
 import { ScenarioManager } from '../scenario/ScenarioManager';
 import { Obstruction } from '../objects/Obstruction';
 import { Scenario } from '../scenario/Scenario';
+import { CoordUtils } from '../utils/CoordUtils';
 
 /**
  * Основная игровая сцена
@@ -138,8 +139,11 @@ export class MainScene extends Phaser.Scene {
     this.gameCamera.setZoom(1 / this.zoom);
     this.gameCamera.setName('gameCamera');
     this.gameCamera.setBackgroundColor(0x0000FF); // Устанавливаем синий фон для игровой камеры
+    // Устанавливаем границы для игровой камеры, чтобы она не выходила за пределы мира
+    this.gameCamera.setBounds(0, 0, Settings.GAME_WORLD_WIDTH, Settings.GAME_WORLD_HEIGHT);
     
     // UI камера - для интерфейса
+    // Ее размер остается привязанным к SCREEN_WIDTH/HEIGHT
     this.uiCamera = this.cameras.add(0, 0, Settings.SCREEN_WIDTH, Settings.SCREEN_HEIGHT);
     this.uiCamera.setName('uiCamera');
     this.uiCamera.setScroll(0, 0); // UI всегда отображается от (0,0)
@@ -152,11 +156,12 @@ export class MainScene extends Phaser.Scene {
    */
   private createGameArea(): void {
     // Создаем внешний темно-серый фон (видимый только при отдалении)
+    // Его размер уже был Settings.SCREEN_WIDTH * 10, что теперь соответствует GAME_WORLD_WIDTH/HEIGHT
     const worldBg = this.add.rectangle(
-      Settings.SCREEN_WIDTH / 2, 
-      Settings.SCREEN_HEIGHT / 2,
-      Settings.SCREEN_WIDTH * 10, // Большой прямоугольник для заполнения всего поля видимости
-      Settings.SCREEN_HEIGHT * 10,
+      Settings.GAME_WORLD_WIDTH / 2, 
+      Settings.GAME_WORLD_HEIGHT / 2,
+      Settings.GAME_WORLD_WIDTH, 
+      Settings.GAME_WORLD_HEIGHT,
       0x333333 // Темно-серый цвет
     );
     worldBg.setDepth(-100); // Ставим ниже всех объектов
@@ -172,28 +177,47 @@ export class MainScene extends Phaser.Scene {
 
     this.gridGraphics.lineStyle(gridLineThickness, gridColor, gridAlpha);
 
-    // Рисуем вертикальные линии
-    // Чтобы сетка покрывала большую область и была видна при скролле,
-    // можно рисовать ее на большей площади, чем просто SCREEN_WIDTH/HEIGHT.
-    // Например, от -SCREEN_WIDTH до 2*SCREEN_WIDTH.
-    // Для начала сделаем от 0 до SCREEN_WIDTH/HEIGHT.
-    // Игровой мир начинается с (0,0)
-    for (let x = 0; x <= Settings.SCREEN_WIDTH; x += gridSize) {
+    // Рисуем вертикальные линии на весь игровой мир
+    for (let x = 0; x <= Settings.GAME_WORLD_WIDTH; x += gridSize) {
       this.gridGraphics.moveTo(x, 0);
-      this.gridGraphics.lineTo(x, Settings.SCREEN_HEIGHT);
+      this.gridGraphics.lineTo(x, Settings.GAME_WORLD_HEIGHT);
     }
-    // Рисуем горизонтальные линии
-    for (let y = 0; y <= Settings.SCREEN_HEIGHT; y += gridSize) {
+    // Рисуем горизонтальные линии на весь игровой мир
+    for (let y = 0; y <= Settings.GAME_WORLD_HEIGHT; y += gridSize) {
       this.gridGraphics.moveTo(0, y);
-      this.gridGraphics.lineTo(Settings.SCREEN_WIDTH, y);
+      this.gridGraphics.lineTo(Settings.GAME_WORLD_WIDTH, y);
     }
-    this.gridGraphics.strokePath(); // Завершаем отрисовку линий
+    this.gridGraphics.strokePath(); // Завершаем отрисовку линий основной сетки
+
+    // Рисуем центральные оси (логические 0,0) пунктиром
+    const axisColor = 0xFFD700; // Золотистый цвет для осей
+    const axisAlpha = 0.7;
+    const axisThickness = 2;
+    const dashLength = 15; // Длина штриха
+    const gapLength = 10;  // Длина промежутка
+
+    this.gridGraphics.lineStyle(axisThickness, axisColor, axisAlpha);
+
+    // Логическая нулевая X-ось (вертикальная линия)
+    const phaserZeroX = CoordUtils.logicalToPhaserX(0);
+    for (let y = 0; y < Settings.GAME_WORLD_HEIGHT; y += (dashLength + gapLength)) {
+      this.gridGraphics.moveTo(phaserZeroX, y);
+      this.gridGraphics.lineTo(phaserZeroX, y + dashLength);
+    }
+
+    // Логическая нулевая Y-ось (горизонтальная линия)
+    const phaserZeroY = CoordUtils.logicalToPhaserY(0);
+    for (let x = 0; x < Settings.GAME_WORLD_WIDTH; x += (dashLength + gapLength)) {
+      this.gridGraphics.moveTo(x, phaserZeroY);
+      this.gridGraphics.lineTo(x + dashLength, phaserZeroY);
+    }
+    this.gridGraphics.strokePath(); // Завершаем отрисовку пунктирных осей
 
     // Создаем внутреннюю игровую зону (синий цвет не нужен, так как фон камеры уже синий)
-    // Вместо этого создаем только белую границу
+    // Вместо этого создаем только белую границу по размерам всего игрового мира
     const border = this.add.graphics();
     border.lineStyle(4, 0xFFFFFF, 0.8); // Белая граница
-    border.strokeRect(0, 0, Settings.SCREEN_WIDTH, Settings.SCREEN_HEIGHT);
+    border.strokeRect(0, 0, Settings.GAME_WORLD_WIDTH, Settings.GAME_WORLD_HEIGHT);
     border.setDepth(-98); // Выше игровой зоны и сетки
     
     // Фоновые элементы должны видеться только в gameCamera, не в uiCamera
@@ -322,12 +346,35 @@ export class MainScene extends Phaser.Scene {
    * Используется если менеджер сценариев недоступен
    */
   private createDefaultObjects(): void {
-    // Создаем корабль игрока (подводная лодка)
-    this.createPlayerShip(100, 350, Constants.FORCES_WHITE);
+    // Задаем логические координаты (0,0 - центр мира)
+    const playerLogicalX = 0;
+    const playerLogicalY = 0;
+
+    // Конвертируем в Phaser координаты для создания объекта
+    const playerPhaserX = CoordUtils.logicalToPhaserX(playerLogicalX);
+    const playerPhaserY = CoordUtils.logicalToPhaserY(playerLogicalY);
+    this.createPlayerShip(playerPhaserX, playerPhaserY, Constants.FORCES_WHITE);
     
-    // Создаем вражеские корабли (для демонстрации)
-    this.createEnemyShip(800, 100, Constants.FORCES_RED, false);
-    this.createEnemyShip(600, 500, Constants.FORCES_RED, true);
+    // Размещаем вражеские корабли со смещением от центра в логических координатах
+    const enemyOffsetLogical = Settings.SCREEN_WIDTH; // Используем SCREEN_WIDTH как меру смещения
+
+    const enemy1LogicalX = enemyOffsetLogical;
+    const enemy1LogicalY = -enemyOffsetLogical / 2;
+    this.createEnemyShip(
+      CoordUtils.logicalToPhaserX(enemy1LogicalX),
+      CoordUtils.logicalToPhaserY(enemy1LogicalY),
+      Constants.FORCES_RED, 
+      false
+    );
+
+    const enemy2LogicalX = -enemyOffsetLogical;
+    const enemy2LogicalY = enemyOffsetLogical / 2;
+    this.createEnemyShip(
+      CoordUtils.logicalToPhaserX(enemy2LogicalX),
+      CoordUtils.logicalToPhaserY(enemy2LogicalY),
+      Constants.FORCES_RED, 
+      true
+    );
   }
   
   /**
@@ -392,9 +439,15 @@ export class MainScene extends Phaser.Scene {
       // Обновляем информацию о шуме и другие данные для selectedVehicleForInformer
       if (this.selectedVehicleForInformer) {
         const vehicle = this.selectedVehicleForInformer;
-        const pos = vehicle.getPosition();
+        const phaserPos = vehicle.getPosition(); // Это Phaser координаты
+        // Конвертируем в логические для отображения
+        const logicalPosX = CoordUtils.phaserToLogicalX(phaserPos.x);
+        const logicalPosY = CoordUtils.phaserToLogicalY(phaserPos.y);
+
         this.informer.writeDebugText(`Выбран: ID ${vehicle.id}, ${vehicle.constructor.name}`);
-        this.informer.writeDebugText(`Позиция: X=${Math.floor(pos.x)}, Y=${Math.floor(pos.y)}`);
+        this.informer.writeDebugText(`Позиция (лог): X=${Math.floor(logicalPosX)}, Y=${Math.floor(logicalPosY)}`);
+        // Можно оставить и Phaser-координаты для отладки, если нужно
+        // this.informer.writeDebugText(`Позиция (Phaser): X=${Math.floor(phaserPos.x)}, Y=${Math.floor(phaserPos.y)}`);
         
         if (vehicle instanceof Submarine) {
           this.informer.writeDebugText(`Глубина: ${(vehicle as Submarine).getDepth()} м`);
