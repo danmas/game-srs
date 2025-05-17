@@ -22,27 +22,29 @@ export class Informer {
   private readonly COMMAND_COLOR: number = 0xFFFFFF;
   
   private readonly LBL_WIDTH: number = 50;
-  private readonly FIELD_HEIGHT: number = 22;
-  private readonly FIELD_WIDTH: number = 60;
-  private readonly FIELD_TEXT_SIZE: number = 20;
-  private readonly FIELD_TEXT_COLOR: string = '#ffffff';
-  private readonly FIELD_TEXT_BGCOLOR: string = '#1E90FF';
-  private readonly FIELD_ALPHA: number = 0.8;
+  private readonly FIELD_HEIGHT: number = 22; // высота поля
+  private readonly FIELD_WIDTH: number = 60; // ширина поля
+  private readonly FIELD_TEXT_SIZE: number = 20; // размер шрифта для основных полей
+  private readonly FIELD_TEXT_COLOR: string = '#ffffff'; // цвет шрифта для основных полей
+  private readonly FIELD_TEXT_BGCOLOR: string = '#1E90FF'; // цвет фона для основных полей
+  private readonly FIELD_ALPHA: number = 0.8; // прозрачность полей
   
-  private readonly R_LBL_WIDTH: number = 150;
-  private readonly R_FIELD_WIDTH: number = 100;
-  private readonly R_FIELD_HEIGHT: number = 22;
-  private readonly R_FIELD_TEXT_SIZE: number = 20;
-  private readonly R_FIELD_TEXT_COLOR: string = '#ffff00';
-  private readonly R_FIELD_TEXT_BGCOLOR: string = '#1E90FF';
+  // Поля справа (NOISE)
+  private readonly R_LBL_WIDTH: number = 150; // ширина меток справа
+  private readonly R_FIELD_WIDTH: number = 100; // ширина полей справа
+  private readonly R_FIELD_HEIGHT: number = 22; // высота полей справа
+  private readonly R_FIELD_TEXT_SIZE: number = 20; // размер шрифта для полей справа
+  private readonly R_FIELD_TEXT_COLOR: string = '#ffff00'; // цвет шрифта для полей справа
+  private readonly R_FIELD_TEXT_BGCOLOR: string = '#1E90FF';  
   private readonly R_ALPHA: number = 0.8;
   
-  private readonly TF_FIELD_HEIGHT: number = 300;
-  private readonly TF_FIELD_WIDTH: number = 300;
-  private readonly TF_FIELD_TEXT_SIZE: number = 20;
-  private readonly TF_FIELD_TEXT_COLOR: string = '#ffff00';
-  private readonly TF_FIELD_TEXT_BGCOLOR: string = '#1E90FF';
-  private readonly TF_FIELD_ALPHA: number = 0.8;
+  // Отладочная панель
+  private readonly TF_FIELD_HEIGHT: number = 200; // высота поля справа
+  private readonly TF_FIELD_WIDTH: number = 300; // ширина поля справа
+  private readonly TF_FIELD_TEXT_SIZE: number = 15; // размер шрифта для поля справа
+  private readonly TF_FIELD_TEXT_COLOR: string = '#ffff00'; // цвет шрифта для поля справа
+  private readonly TF_FIELD_TEXT_BGCOLOR: string = '#1E90FF'; // цвет фона для поля справа
+  private readonly TF_FIELD_ALPHA: number = 0.8; // прозрачность поля справа
   
   // Ссылка на сцену
   private scene: Phaser.Scene;
@@ -209,7 +211,7 @@ export class Informer {
    * Создает командную строку
    */
   private setupCommandText(): void {
-    this.commandText = this.scene.add.text(200, Settings.SCREEN_HEIGHT - this.COMMAND_HEIGHT, '', {
+    this.commandText = this.scene.add.text(400, Settings.SCREEN_HEIGHT-375/* - this.COMMAND_HEIGHT*/, '', {
       fontSize: `${this.FIELD_TEXT_SIZE}px`,
       fontFamily: 'Courier',
       color: this.FIELD_TEXT_COLOR,
@@ -597,7 +599,7 @@ export class Informer {
     const color = on ? '#00FF00' : '#FF0000';
     
     // Вычисляем координаты
-    const x = Settings.SCREEN_WIDTH - 130;
+    const x = Settings.SCREEN_WIDTH - 40;
     const y = 15 + (num - 1) * 30;
     
     // Проверяем, существует ли уже такая лампа
@@ -625,7 +627,7 @@ export class Informer {
     const sprite = this.scene.add.sprite(x, y, textureName);
     
     // Создаем текст для лампы
-    const txt = this.scene.add.text(x + 15, y - 10, text, {
+    const txt = this.scene.add.text(x + 5, y - 10, text, {
       fontFamily: 'Courier',
       fontSize: '16px',
       color: color
