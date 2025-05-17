@@ -81,9 +81,9 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
     // ПОРЯДОК ВАЖЕН ДЛЯ ОТРИСОВКИ, ЧТОБЫ БОЛЬШИЕ КРУГИ НЕ ПЕРЕКРЫВАЛИ МЕНЬШИЕ, ЕСЛИ БУДЕТ ЗАЛИВКА
     // НО ТАК КАК У НАС ТОЛЬКО ЛИНИИ, ПОРЯДОК НЕ СТОЛЬ КРИТИЧЕН.
     // ДЛЯ СООТВЕТСТВИЯ С AS, ГДЕ СНАЧАЛА РИСУЕТСЯ ДЛЯ 0.2, ПОТОМ 0.5, ПОТОМ 0.8:
-    { threshold: 0.2, color: 0xFF0000, alphaLine: 1.0, lineThickness: 2 }, // Темно-красный (пример)
+    { threshold: 0.8, color: 0xFF0000, alphaLine: 1.0, lineThickness: 2 }, // Темно-красный (пример)
     { threshold: 0.5, color: 0xFF6347, alphaLine: 1.0, lineThickness: 2 }, // Средне-красный (томатный - пример)
-    { threshold: 0.8, color: 0xFFA07A, alphaLine: 1.0, lineThickness: 2 }  // Светло-красный (светло-лососевый - пример)
+    { threshold: 0.2, color: 0xFFA07A, alphaLine: 1.0, lineThickness: 2 }  // Светло-красный (светло-лососевый - пример)
   ];
 
   /**

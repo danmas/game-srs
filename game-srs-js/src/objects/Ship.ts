@@ -394,17 +394,35 @@ export class Ship extends Vehicle {
 
       if (activeEnemies.length > 0) {
         const target = activeEnemies[0] as Ship; // Выбираем первую попавшуюся активную цель
-        if (target && this.isWeaponReady(Constants.WEAPON_SELECT_TORP_I)) {
-          // Проверяем дистанцию и угол
-          const distanceToTarget = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
-          const angleToTargetRad = Phaser.Math.Angle.Between(this.x, this.y, target.x, target.y);
-          let angleToTargetDeg = (Phaser.Math.RadToDeg(angleToTargetRad) + 90 + 360) % 360;
-          const diffAngle = Phaser.Math.Angle.ShortestBetween(this.direction, angleToTargetDeg);
+        const weaponReady = this.isWeaponReady(Constants.WEAPON_SELECT_TORP_I);
+        const distanceToTarget = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
+        const angleToTargetRad = Phaser.Math.Angle.Between(this.x, this.y, target.x, target.y);
+        let angleToTargetDeg = (Phaser.Math.RadToDeg(angleToTargetRad) + 90 + 360) % 360;
+        const diffAngle = Phaser.Math.Angle.ShortestBetween(this.direction, angleToTargetDeg);
 
-          if (distanceToTarget < Settings.TRP_I_DIST_EXECUTION && Math.abs(diffAngle) < Settings.TRP_ATACK__ANGLE_WARNING) {
-            // this.fireTorpedo(Constants.WEAPON_SELECT_TORP_I, target);
-          }
+        // --- START INTERPRETED DEBUG LOGS ---
+        console.log(`--- AI Ship ${this.id} (хочет атаковать Цель ID ${target.id}) ---`);
+        if (!target) {
+          console.log(`   [ОШИБКА] Цель не определена!`);
+          return; // Прерываем, если цели нет
         }
+        console.log(`   Количество врагов: ${activeEnemies.length}`);
+        console.log(`   Оружие (Торп.I) готово: ${weaponReady} (На борту: ${this.torpedoOnBoardI}, Время перезарядки: ${this.reloadTimeTorp1} мс)`);
+        
+        const distanceOk = distanceToTarget < Settings.TRP_I_DIST_EXECUTION;
+        console.log(`   Дистанция до цели: ${distanceToTarget.toFixed(1)} (Макс. для атаки: ${Settings.TRP_I_DIST_EXECUTION}) -> ${distanceOk ? 'OK' : 'ДАЛЕКО'}`);
+        
+        const angleOk = Math.abs(diffAngle) < Settings.TRP_ATACK__ANGLE_WARNING;
+        console.log(`   Угол на цель (отклонение от курса): ${diffAngle.toFixed(1)}° (Макс. допуск: ${Settings.TRP_ATACK__ANGLE_WARNING}°) -> ${angleOk ? 'OK' : 'НЕ ПО КУРСУ'}`);
+        // --- END INTERPRETED DEBUG LOGS ---
+
+        if (target && weaponReady && distanceOk && angleOk) {
+            console.log(`   >>> AI Ship ${this.id}: УСЛОВИЯ ВЫПОЛНЕНЫ! СТРЕЛЯЮ Торпедой I по Цели ${target.id} (Координаты: X:${target.x.toFixed(0)}, Y:${target.y.toFixed(0)})`);
+            (this.scene as MainScene).fireTorpedo(this, Constants.WEAPON_SELECT_TORP_I, target.x, target.y);
+        } else {
+            console.log(`   --- AI Ship ${this.id}: Условия для стрельбы НЕ выполнены. Пропускаю выстрел.`);
+        }
+        console.log(`--- Конец оценки для AI Ship ${this.id} ---`);
       }
     }
   }

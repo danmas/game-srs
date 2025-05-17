@@ -76,7 +76,7 @@ export class Settings {
   static readonly WEB_ENABLE: boolean = true;
   
   // Настройки атаки торпедами
-  static readonly TRP_ATACK__ANGLE_WARNING: number = 25.0;
+  static readonly TRP_ATACK__ANGLE_WARNING: number = 180.0;
   static readonly TRP_ATACK_DISTANCE_WARNING: number = 500.0;
   static readonly TRP_ATACK_DEFENSE_ANGLE: number = 45.0;
   static readonly TRP_ATACK_ALARM_DIST: number = 300.0;
