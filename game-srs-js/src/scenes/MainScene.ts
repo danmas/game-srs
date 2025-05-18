@@ -82,6 +82,8 @@ export class MainScene extends Phaser.Scene {
   private torpedoTargetCursor!: Phaser.GameObjects.Graphics | null;
   private torpedoAimingLine!: Phaser.GameObjects.Graphics | null;
   
+  private debugPanelEnabled: boolean = true; // По умолчанию панель отладки включена
+  
   /**
    * Конструктор
    */
@@ -442,7 +444,7 @@ export class MainScene extends Phaser.Scene {
       
       // Обновляем общую информацию в информере (не зависит от selectedVehicleForInformer)
       // Например, отладочная информация о камере и масштабе
-      if (Settings.DEBUG) {
+      if (this.debugPanelEnabled && Settings.DEBUG && this.informer) { 
         this.informer.writeDebugText(`Камера: X=${Math.floor(this.cameras.main.scrollX)}, Y=${Math.floor(this.cameras.main.scrollY)}`);
         this.informer.writeDebugText(`Масштаб: ${this.zoom.toFixed(2)}`);
       }
@@ -450,22 +452,20 @@ export class MainScene extends Phaser.Scene {
       // Обновляем информацию о шуме и другие данные для selectedVehicleForInformer
       if (this.selectedVehicleForInformer) {
         const vehicle = this.selectedVehicleForInformer;
-        const phaserPos = vehicle.getPosition(); // Это Phaser координаты
-        // Конвертируем в логические для отображения
+        const phaserPos = vehicle.getPosition(); 
         const logicalPosX = CoordUtils.phaserToLogicalX(phaserPos.x);
         const logicalPosY = CoordUtils.phaserToLogicalY(phaserPos.y);
 
-        this.informer.writeDebugText(`Выбран: ID ${vehicle.id}, ${vehicle.constructor.name}`);
-        this.informer.writeDebugText(`Позиция (лог): X=${Math.floor(logicalPosX)}, Y=${Math.floor(logicalPosY)}`);
-        // Можно оставить и Phaser-координаты для отладки, если нужно
-        // this.informer.writeDebugText(`Позиция (Phaser): X=${Math.floor(phaserPos.x)}, Y=${Math.floor(phaserPos.y)}`);
-        
-        if (vehicle instanceof Submarine) {
-          this.informer.writeDebugText(`Глубина: ${(vehicle as Submarine).getDepth()} м`);
-          this.informer.writeDebugText(`Перископ: ${(vehicle as Submarine).periscope ? 'поднят' : 'опущен'}`);
+        if (this.debugPanelEnabled && Settings.DEBUG && this.informer) {
+            this.informer.writeDebugText(`Выбран: ID ${vehicle.id}, ${vehicle.constructor.name}`);
+            this.informer.writeDebugText(`Позиция (лог): X=${Math.floor(logicalPosX)}, Y=${Math.floor(logicalPosY)}`);
+            
+            if (vehicle instanceof Submarine) {
+              this.informer.writeDebugText(`Глубина: ${(vehicle as Submarine).getDepth()} м`);
+              this.informer.writeDebugText(`Перископ: ${(vehicle as Submarine).periscope ? 'поднят' : 'опущен'}`);
+            }
         }
         
-        // Отображение шума для selectedVehicleForInformer
         const noiseVal = vehicle.getNoiseStrength();
         this.informer.writeRightField("NOISE", noiseVal.toFixed(2));
 
@@ -854,6 +854,20 @@ export class MainScene extends Phaser.Scene {
       return;
     }
     this.lastKeyPressTime = currentTime;
+    
+    // --- START: Debug Panel Toggle (Ctrl+B) ---
+    if (event.ctrlKey && (event.key === 'b' || event.key === 'B' || (event.keyCode || event.which) === 66)) {
+      this.debugPanelEnabled = !this.debugPanelEnabled;
+      if (this.informer) {
+        if (!this.debugPanelEnabled) {
+          this.informer.clearDebugOutput(); 
+        }
+        this.informer.setCommand(this.debugPanelEnabled ? "Панель отладки: ВКЛ (Ctrl+B)" : "Панель отладки: ВЫКЛ (Ctrl+B)");
+      }
+      event.preventDefault(); // Предотвращаем стандартное действие браузера
+      return; 
+    }
+    // --- END: Debug Panel Toggle ---
     
     // Обработка клавиши S для старта/стопа игры независимо от текущего состояния
     if (event.key === 's' || event.key === 'S' || event.keyCode === 83) {
@@ -1453,7 +1467,7 @@ export class MainScene extends Phaser.Scene {
     if (this.torpedoTargetCursor && this.torpedoTargetCursor.visible) {
       const size = 15; // Size of the crosshair
       this.torpedoTargetCursor.clear();
-      this.torpedoTargetCursor.lineStyle(2, 0x00FFFF, 1); // Cyan color for the crosshair
+      this.torpedoTargetCursor.lineStyle(2, 0x0000FF, 1); // Blue color for the crosshair
       this.torpedoTargetCursor.beginPath();
       this.torpedoTargetCursor.moveTo(phaserX - size, phaserY);
       this.torpedoTargetCursor.lineTo(phaserX + size, phaserY);

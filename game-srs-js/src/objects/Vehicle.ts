@@ -41,11 +41,20 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
   static readonly RUDER_LEFT_10: number = 2;
   static readonly RUDER_LEFT_15: number = 3;
   
+  // Константы для отображения WayPoint
+  static readonly WAY_POINT_COLOR: number = 0x00FF00; // Зеленый для обычных WP
+  static readonly TORPEDO_WAY_POINT_COLOR: number = 0x0000FF; // Синий для WP торпед
+  static readonly WAY_POINT_RADIUS: number = 8; // Уменьшил радиус для лучшего вида
+  static readonly TORPEDO_WP_CROSS_SIZE: number = 8; // Размер крестика для WP торпед
+  static readonly WAYPOINT_CLICK_DELETE_THRESHOLD: number = 15; 
+  static readonly ANGLE_PRECISION_FOR_WP: number = 5; 
+  
   // Статический счетчик для уникальных ID
   private static nextId: number = 0;
 
   // Свойства объекта
   public readonly id: number; // Уникальный идентификатор объекта
+  public readonly entityType: string = 'Vehicle'; // Тип сущности, по умолчанию 'Vehicle'
   protected position: Phaser.Math.Vector2;
   protected velocity: Phaser.Math.Vector2;
   protected direction: number = 0;
@@ -286,38 +295,60 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
   
   /**
    * Добавляет точку маршрута
-   * @param x Координата X
-   * @param y Координата Y
+   * @param logicalX Координата X
+   * @param logicalY Координата Y
    * @param type Тип точки маршрута
    */
-  public addWayPoint(x: number, y: number, type: number = 0): void {
-    const logicalPoint = new Phaser.Math.Vector2(x, y);
-    const phaserX = CoordUtils.logicalToPhaserX(x);
-    const phaserY = CoordUtils.logicalToPhaserY(y);
-    const wpGraphics = this.scene.add.graphics({ x: phaserX, y: phaserY });
-    wpGraphics.fillStyle(Settings.WAY_POINT_COLOR, 0.7);
-    wpGraphics.fillCircle(0, 0, 5);
-    wpGraphics.setDepth(Constants.DEPTH_WAYPOINT);
+  public addWayPoint(logicalX: number, logicalY: number, type: number = Constants.WP_TYPE_MOVE): void {
+    const phaserPoint = new Phaser.Math.Vector2(
+        CoordUtils.logicalToPhaserX(logicalX),
+        CoordUtils.logicalToPhaserY(logicalY)
+    );
 
-    const newWayPointData: WayPointData = { point: logicalPoint, type: type, graphics: wpGraphics };
+    const wpGraphics = this.scene.add.graphics({ x: phaserPoint.x, y: phaserPoint.y });
+    wpGraphics.setDepth(Constants.DEPTH_WAYPOINT !== undefined ? Constants.DEPTH_WAYPOINT : 90); 
 
-    if (this.isMovingOnWayPoint) {
-      // Если уже движемся по маршруту, просто добавляем новую точку в конец очереди.
-      // Корабль сначала достигнет своей текущей цели (и всех последующих в старом маршруте),
-      // а потом пойдет к новой добавленной точке.
-      this.wayPoints.push(newWayPointData);
-      console.log(`${this.constructor.name} ${this.id} WP added to end of existing route. New WP count: ${this.wayPoints.length}`);
+    const isTorpedoWPStyle = (this.entityType === 'Torpedo') || 
+                        type === Constants.WP_TYPE_TARGET || 
+                        type === Constants.WP_TYPE_TORPEDO_TARGET;
+
+    if (isTorpedoWPStyle) {
+        // console.log(`[Vehicle.addWayPoint] Drawing TORPEDO waypoint for entity ID: ${this.id}, type: ${this.entityType}`); // УДАЛЯЕМ ОТЛАДКУ
+        const size = Vehicle.TORPEDO_WP_CROSS_SIZE;
+        wpGraphics.lineStyle(2, Vehicle.TORPEDO_WAY_POINT_COLOR, 1);
+        wpGraphics.beginPath();
+        wpGraphics.moveTo(-size, 0);
+        wpGraphics.lineTo(size, 0);
+        wpGraphics.moveTo(0, -size);
+        wpGraphics.lineTo(0, size);
+        wpGraphics.strokePath();
     } else {
-      // Если не двигались, просто добавляем точку. Движение начнется через startMoveOnWP().
-      this.wayPoints.push(newWayPointData);
+        // console.log(`[Vehicle.addWayPoint] Drawing REGULAR waypoint for entity ID: ${this.id}, type: ${this.entityType}`); // УДАЛЯЕМ ОТЛАДКУ
+        const radius = Vehicle.WAY_POINT_RADIUS;
+        wpGraphics.fillStyle(Vehicle.WAY_POINT_COLOR, 0.2);
+        wpGraphics.fillCircle(0, 0, radius); 
+        wpGraphics.lineStyle(1.5, Vehicle.WAY_POINT_COLOR, 0.9);
+        wpGraphics.strokeCircle(0, 0, radius); 
+    }
+
+    const newWayPoint: WayPointData = {
+        point: new Phaser.Math.Vector2(logicalX, logicalY), 
+        type: type,
+        graphics: wpGraphics
+    };
+
+    this.wayPoints.push(newWayPoint);
+
+    if (this.currentWayPointIndex === -1 && this.wayPoints.length > 0) {
+        this.currentWayPointIndex = 0;
     }
     
-    // Если это корабль игрока и он под контролем, можно включить лампочку WP на информере
-    if (this.underControl && this.scene instanceof MainScene) {
-      const mainScene = this.scene as MainScene;
-      if (mainScene.informer) {
-        mainScene.informer.panelLampActive(Constants.LAMP_WP);
-      }
+    if (wpGraphics) {
+        if (this.entityType === 'Torpedo') {
+            wpGraphics.setVisible(true); // WP, принадлежащие торпеде, всегда видимы
+        } else {
+            wpGraphics.setVisible(this.displaySelected); // WP других юнитов зависят от выбора
+        }
     }
   }
   
@@ -372,27 +403,19 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
    * Также удаляет их визуальное представление, если оно было.
    */
   public clearWayPoints(): void {
-    // Удаляем графику всех путевых точек со сцены
     for (const wp of this.wayPoints) {
-      if (wp.graphics) {
-        wp.graphics.destroy();
-      }
+        if (wp.graphics) {
+            wp.graphics.destroy(); // Уничтожаем графику каждой точки
+        }
     }
     this.wayPoints = [];
     this.currentWayPointIndex = -1;
     this.isMovingOnWayPoint = false;
-    if (this.moveState === Vehicle.ST_WP_MOVING || this.moveState === Vehicle.ST_WP_FINISHED) {
-      this.moveState = Vehicle.ST_MOVE_UNKNOWN; // Сброс состояния, если оно было связано с WP
-    }
-    console.log(`${this.constructor.name} ${this.id} cleared waypoints.`);
-
-    // Если это корабль игрока и он под контролем, гасим лампочку WP
-    if (this.underControl && this.scene instanceof MainScene) {
-      const mainScene = this.scene as MainScene;
-      if (mainScene.informer) {
-        mainScene.informer.panelLampOff(Constants.LAMP_WP);
-      }
-    }
+    // this.moveState = Vehicle.ST_COMMAND_MOVING; // Оставляем как было, или ST_MOVE_UNKNOWN
+    // Если есть специфичная логика остановки (например, сброс руля), ее нужно добавить
+    // this.setRudder(Vehicle.RUDER_0);
+    // Скрываем все WP, т.к. их больше нет (на случай если selected остался true)
+    // this.hideWayPoints(); // Не нужно, т.к. массив пуст
   }
   
   /**
@@ -416,58 +439,56 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
    * @param index Индекс удаляемой точки в массиве wayPoints.
    */
   public removeSpecificWayPoint(index: number): void {
-    if (index < 0 || index >= this.wayPoints.length) {
-      console.warn(`${this.constructor.name} ${this.id} removeSpecificWayPoint: invalid index ${index}. Total points: ${this.wayPoints.length}`);
-      return;
-    }
-
-    const removedWpData = this.wayPoints.splice(index, 1)[0]; // Удаляем и получаем удаленный элемент
-
-    if (removedWpData && removedWpData.graphics) {
-      removedWpData.graphics.destroy();
-      console.log(`${this.constructor.name} ${this.id} removed WP at index ${index}, graphics destroyed.`);
-    } else {
-      console.log(`${this.constructor.name} ${this.id} removed WP at index ${index}, no graphics or data issue.`);
-    }
-
-    // TODO: Более сложная логика обновления currentWayPointIndex и состояния движения
-    // Простое правило: если удалили точку до или равную currentWayPointIndex, и currentWayPointIndex был валидным,
-    // то currentWayPointIndex нужно уменьшить, чтобы он не указывал за пределы или на "не ту" точку.
-    if (this.currentWayPointIndex >= index && this.currentWayPointIndex > 0) {
-        // Если удалили точку до или совпадающую с текущей, и текущий индекс не был первым,
-        // то сдвигаем текущий индекс назад.
-        // this.currentWayPointIndex--; 
-        // Эта логика пока что слишком упрощенная и может привести к проблемам.
-        // Например, если currentWayPointIndex был 0 и его удалили, он станет -1, что остановит движение.
-        // Если currentWayPointIndex был >0 и его удалили, он сдвинется, но цель может резко поменяться.
-    }
-    
-    // Если после удаления не осталось точек, останавливаем движение и гасим лампочку.
-    if (this.wayPoints.length === 0) {
-      this.isMovingOnWayPoint = false;
-      this.currentWayPointIndex = -1;
-      this.moveState = Vehicle.ST_WP_FINISHED; // Или ST_MOVE_UNKNOWN
-      this.setRudder(Vehicle.RUDER_0);
-      if (this.underControl && this.scene instanceof MainScene) {
-        const mainScene = this.scene as MainScene;
-        if (mainScene.informer) {
-          mainScene.informer.panelLampOff(Constants.LAMP_WP);
+    if (index >= 0 && index < this.wayPoints.length) {
+        const removedWpArray = this.wayPoints.splice(index, 1);
+        if (removedWpArray.length > 0 && removedWpArray[0].graphics) {
+            removedWpArray[0].graphics.destroy(); // Уничтожаем графику удаленной точки
         }
-      }
-      console.log(`${this.constructor.name} ${this.id} all waypoints removed or last WP deleted, stopping WP movement.`);
-    } else if (this.currentWayPointIndex >= this.wayPoints.length) {
-        // Если currentWayPointIndex стал указывать за пределы массива (например, удалили последнюю активную точку)
-        // Нужно завершить последовательность.
-        this.onWayPointSequenceFinished();
-        this.isMovingOnWayPoint = false;
-        this.moveState = Vehicle.ST_WP_FINISHED;
-        // currentWayPointIndex можно оставить как есть или сбросить в -1, 
-        // т.к. onWayPointSequenceFinished уже вызвана.
-    }
 
-    // Если лампочка WP была активна, а точек не осталось, погасить ее
-    // (Это уже делается выше, но для надежности можно добавить отдельную проверку здесь,
-    // если логика обновления this.currentWayPointIndex будет сложной)
+        // Корректируем currentWayPointIndex
+        if (this.wayPoints.length === 0) {
+            this.currentWayPointIndex = -1;
+            this.stopMoveOnWayPoint(); // Останавливаемся, если нет больше точек
+        } else if (this.currentWayPointIndex > index) {
+            this.currentWayPointIndex--; // Если удалили точку перед текущей
+        } else if (this.currentWayPointIndex === index) {
+            // Если удалили текущую точку, и это была не последняя, переходим к следующей (которая теперь на том же индексе)
+            // Если это была последняя, currentWayPointIndex станет >= wayPoints.length
+            if (this.currentWayPointIndex >= this.wayPoints.length) {
+                // Достигли конца нового, укороченного списка
+                this.onWayPointSequenceFinished(); // Может вызвать stopMoveOnWayPoint
+                 if (this.wayPoints.length === 0) { // Если после onWayPointSequenceFinished точек не осталось
+                    this.stopMoveOnWayPoint();
+                } else {
+                    // Если onWayPointSequenceFinished мог добавить новые точки (например, в циклических маршрутах)
+                    // то нужно убедиться, что currentWayPointIndex валиден.
+                    // Для простоты, если мы не уверены, что делать, можно просто остановиться или перейти к первой.
+                    // Пока оставим так, onWayPointSequenceFinished должен корректно обработать.
+                    // Если же он не остановил, а точек нет, то остановим здесь
+                    if (this.wayPoints.length === 0) this.stopMoveOnWayPoint();
+                    else if (this.currentWayPointIndex >= this.wayPoints.length) this.currentWayPointIndex = 0; // На всякий случай
+                }
+            } else {
+                 // Движение продолжится к точке, которая теперь находится по адресу this.currentWayPointIndex
+                 // Возможно, нужно обновить направление this.setDirectionToCurrentWayPoint();
+            }
+        }
+        // Если this.currentWayPointIndex < index, то удаление не влияет на текущую цель.
+
+        if (this.wayPoints.length === 0 && this.isMovingOnWayPoint) {
+             this.stopMoveOnWayPoint();
+             // this.onWayPointSequenceFinished(); // stopMoveOnWayPoint может уже это сделать, или onWayPointReached
+        }
+        // Обновляем видимость оставшихся WP, если объект выбран
+        if(this.displaySelected) {
+            this.showWayPoints(); 
+        } else {
+            this.hideWayPoints();
+        }
+
+    } else {
+        console.warn(`Попытка удалить WP с неверным индексом: ${index}`);
+    }
   }
   
   /**
@@ -714,15 +735,24 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
   public setSelected(selected: boolean): void {
     this.displaySelected = selected;
     
-    // Перерисовываем объект при изменении состояния выбора
-    if (this.constructor.name === 'Ship') {
-      // Для обычных кораблей
-      (this as any).drawShip();
-    } else if (this.constructor.name === 'Submarine') {
-      // Для подводных лодок
-      const submarine = this as any;
-      if (typeof submarine.drawVehicle === 'function') {
-        submarine.drawVehicle();
+    // Убираем отладочные комментарии
+    // НЕЗАВИСИМО от того, selected торпеда или нет, ее WP должны быть видны, если они ЕСТЬ...
+    // и т.д.
+
+    if (this.displaySelected) {
+        this.showWayPoints();
+        if (this.noiseCirclesGraphics) {
+          this.noiseCirclesGraphics.x = this.x;
+          this.noiseCirclesGraphics.y = this.y;
+          this.updateNoiseCircles(); 
+          this.noiseCirclesGraphics.visible = true;
+        }
+    } else {
+        // Убираем отладочные комментарии
+        // Если объект не выбран, скрываем его обычные WP...
+        this.hideWayPoints();
+        if (this.noiseCirclesGraphics) {
+            this.noiseCirclesGraphics.visible = false;
       }
     }
   }
@@ -996,5 +1026,25 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
   // Метод setRotation уже есть в Phaser.GameObjects.Sprite, используем другое имя для нашего метода setSpriteRotation
   public setSpriteRotation(radians: number): void {
     super.setRotation(radians);
+  }
+
+  protected showWayPoints(): void {
+    for (const wpData of this.wayPoints) {
+        if (wpData.graphics) {
+            wpData.graphics.setVisible(true); // При выборе все WP текущего объекта становятся видимы
+        }
+    }
+  }
+
+  protected hideWayPoints(): void {
+    for (const wpData of this.wayPoints) {
+        if (wpData.graphics) {
+            if (this.entityType === 'Torpedo') {
+                // WP, принадлежащие торпеде, остаются видимыми
+            } else {
+                wpData.graphics.setVisible(false); // Скрываем WP для не-торпед
+            }
+        }
+    }
   }
 } 

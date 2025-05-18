@@ -46,6 +46,9 @@ export class Informer {
   private readonly TF_FIELD_TEXT_BGCOLOR: string = '#1E90FF'; // цвет фона для поля справа
   private readonly TF_FIELD_ALPHA: number = 0.8; // прозрачность поля справа
   
+  private readonly TF_MAX_LINES = 20; // Максимальное количество строк в панели отладки
+  private readonly DEBUG_PANEL_DEPTH = 101; // Глубина для панели отладки (выше других UI)
+  
   // Ссылка на сцену
   private scene: Phaser.Scene;
   
@@ -690,15 +693,24 @@ export class Informer {
    * Создает текстовое поле для отладочной информации
    */
   public writeText(val: string): void {
-    // Создаем текстовый объект, если он еще не существует
+    let currentLines: string[] = [];
+
     if (!this.traceText) {
-      const offsetY = this.fields.length > 0 ? 
-                     this.fields[this.fields.length - 1].y + this.fields[this.fields.length - 1].height + 5 : 10;
-      
+      let offsetY = 10; // Значение по умолчанию
+      if (this.labels.length > 0 && this.labels[this.labels.length - 1]) {
+        // Попробуем разместить под последней меткой слева, если они есть
+        offsetY = this.labels[this.labels.length - 1].y + this.labels[this.labels.length - 1].height + 5;
+      } else if (this.timeText) {
+        // Или под полем времени
+        offsetY = this.timeText.y + this.timeText.height + 5;
+      }
+      // Можно добавить еще условий или просто фиксированную позицию, если динамическая не подходит
+      // Например, this.commandText.y + this.commandText.height + 5
+
       this.traceText = this.scene.add.text(
         5, 
-        offsetY,
-        '',
+        offsetY, // Используем рассчитанный offsetY
+        '', // Начинаем с пустого текста
         {
           fontSize: `${this.TF_FIELD_TEXT_SIZE}px`,
           fontFamily: 'Courier',
@@ -711,20 +723,26 @@ export class Informer {
       this.traceText.setFixedSize(this.TF_FIELD_WIDTH, this.TF_FIELD_HEIGHT);
       this.traceText.setAlpha(this.TF_FIELD_ALPHA);
       this.traceText.setScrollFactor(0);
-      this.traceText.setDepth(100);
-    }
-    
-    // Добавляем новое сообщение с номером
-    const traceMsg = `${this.msgCount++}: ${val}\n${this.traceText.text}`;
-    
-    // Ограничиваем количество строк в тексте
-    const lines = traceMsg.split('\n');
-    if (lines.length > 15) {
-      // Если больше 15 строк, оставляем только последние 15
-      this.traceText.setText(lines.slice(0, 15).join('\n'));
+      this.traceText.setDepth(this.DEBUG_PANEL_DEPTH); 
+      this.traceText.setVisible(true); // Новый объект должен быть видим
+      // Убедимся, что getAllUIElements() его возвращает, чтобы камеры настроились
     } else {
-      this.traceText.setText(traceMsg);
+      // Если traceText существует, убедимся, что он видим
+      if (!this.traceText.visible) {
+        this.traceText.setVisible(true);
+      }
+      // Берем существующие строки, отфильтровывая пустые, которые могли остаться от setText('')
+      currentLines = this.traceText.text.split('\n').filter(line => line.trim() !== '');
     }
+    
+    const newMessage = `${this.msgCount++}: ${val}`;
+    currentLines.unshift(newMessage); // Добавляем новое сообщение в начало
+    
+    if (currentLines.length > this.TF_MAX_LINES) {
+      currentLines = currentLines.slice(0, this.TF_MAX_LINES); // Оставляем только последние TF_MAX_LINES строк
+    }
+    
+    this.traceText.setText(currentLines.join('\n'));
   }
   
   /**
@@ -735,6 +753,17 @@ export class Informer {
     if (Settings.DEBUG) {
       this.writeText(val);
     }
+  }
+  
+  /**
+   * Очищает вывод отладочной панели и скрывает её.
+   */
+  public clearDebugOutput(): void {
+    if (this.traceText) {
+        this.traceText.setText(''); 
+        this.traceText.setVisible(false);
+    }
+    this.msgCount = 1; // Сбрасываем счетчик сообщений для новой сессии вывода
   }
   
   /**

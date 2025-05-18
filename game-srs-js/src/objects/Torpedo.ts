@@ -16,6 +16,7 @@ export class Torpedo extends Vehicle {
   protected executionDist: number = 0;
   protected maxTimeLifeSec: number = 0;
   protected params: TorpedoParams | null = null;
+  public readonly entityType: string = 'Torpedo'; // Тип сущности для идентификации
   
   /**
    * Конструктор
