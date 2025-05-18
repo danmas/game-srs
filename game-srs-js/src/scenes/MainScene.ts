@@ -837,12 +837,26 @@ export class MainScene extends Phaser.Scene {
     
     // Обработка масштабирования (Z/X) доступна всегда
     if (event.key === 'z' || event.key === 'Z' || event.keyCode === 90) {
-      this.decreaseZoom(); // БЫЛО: this.increaseZoom();
+      const oldZoomVal = this.zoom;
+      this.decreaseZoom(); // Отдаление (как Z в AS)
+      if (this.zoom !== oldZoomVal) { // Если зум изменился
+        this.updateCameraZoom(); // Применяем стандартный зум по центру
+        if (this.informer) {
+          this.informer.setCommand(`Масштаб: ${this.zoom.toFixed(2)} (по центру)`);
+        }
+      }
       return;
     }
     
     if (event.key === 'x' || event.key === 'X' || event.keyCode === 88) {
-      this.increaseZoom(); // БЫЛО: this.decreaseZoom();
+      const oldZoomVal = this.zoom;
+      this.increaseZoom(); // Приближение (как X в AS)
+      if (this.zoom !== oldZoomVal) { // Если зум изменился
+        this.updateCameraZoom(); // Применяем стандартный зум по центру
+        if (this.informer) {
+          this.informer.setCommand(`Масштаб: ${this.zoom.toFixed(2)} (по центру)`);
+        }
+      }
       return;
     }
     
@@ -1259,26 +1273,27 @@ export class MainScene extends Phaser.Scene {
    */
   private increaseZoom(): void {
     // Уменьшаем значение зума (что делает объекты крупнее)
-    this.zoom *= 0.5;
+    const currentZoom = this.zoom;
+    // let newZoom = currentZoom / 1.189207115; // Предыдущий шаг
+    let newZoom = currentZoom / 1.0442737824; // Новый, еще меньший шаг (2^(1/16))
     
     // Ограничиваем минимальный зум
-    if (this.zoom < 0.25) {
-      this.zoom = 0.25;
+    // if (newZoom < 0.25) { // Старый предел
+    //   newZoom = 0.25;
+    if (newZoom < 0.125) { // Новый предел (0.25 / 2)
+      newZoom = 0.125;
       if (this.informer) {
         this.informer.setCommand("Максимальное приближение!");
       }
     }
-    
-    // Обновляем зум камеры
-    this.updateCameraZoom();
-    
-    // Обновляем индикатор зума
+    this.zoom = newZoom;
+    // Обновляем зум камеры и индикатор - теперь будет делаться отдельно
+    // this.updateCameraZoom(); 
     if (this.informer) {
       this.informer.setZoom(this.zoom);
-      this.informer.setCommand(`Масштаб: ${this.zoom.toFixed(2)}`);
+      // this.informer.setCommand(`Масштаб: ${this.zoom.toFixed(2)}`); // Команда будет устанавливаться в applyZoom или handleKeyDown
     }
-    
-    console.log(`Zoom увеличен: ${this.zoom}`);
+    console.log(`Zoom factor increased towards: ${this.zoom}`);
   }
   
   /**
@@ -1286,26 +1301,27 @@ export class MainScene extends Phaser.Scene {
    */
   private decreaseZoom(): void {
     // Увеличиваем значение зума (что делает объекты мельче)
-    this.zoom /= 0.5;
+    const currentZoom = this.zoom;
+    // let newZoom = currentZoom * 1.189207115; // Предыдущий шаг
+    let newZoom = currentZoom * 1.0442737824; // Новый, еще меньший шаг
     
     // Ограничиваем максимальный зум
-    if (this.zoom > 4) {
-      this.zoom = 4;
+    // if (newZoom > 4) { // Старый предел
+    //   newZoom = 4;
+    if (newZoom > 8.0) { // Новый предел (4.0 * 2)
+      newZoom = 8.0;
       if (this.informer) {
         this.informer.setCommand("Максимальное отдаление!");
       }
     }
-    
-    // Обновляем зум камеры
-    this.updateCameraZoom();
-    
-    // Обновляем индикатор зума
+    this.zoom = newZoom;
+    // Обновляем зум камеры и индикатор - теперь будет делаться отдельно
+    // this.updateCameraZoom();
     if (this.informer) {
       this.informer.setZoom(this.zoom);
-      this.informer.setCommand(`Масштаб: ${this.zoom.toFixed(2)}`);
+      // this.informer.setCommand(`Масштаб: ${this.zoom.toFixed(2)}`); // Команда будет устанавливаться в applyZoom или handleKeyDown
     }
-    
-    console.log(`Zoom уменьшен: ${this.zoom}`);
+    console.log(`Zoom factor decreased towards: ${this.zoom}`);
   }
   
   /**
@@ -1343,9 +1359,53 @@ export class MainScene extends Phaser.Scene {
     }
     
     // Обновляем настройки камер после изменения масштаба
-    this.updateCamerasConfig();
+    // ВАЖНО: updateCamerasConfig() теперь должен вызываться после применения зума
+    this.updateCamerasConfig(); 
   }
   
+  /**
+   * Применяет масштабирование камеры, центрируясь на позиции курсора.
+   * @param oldZoomVal Предыдущее значение this.zoom (не 1/zoom, а именно self.zoom)
+   * @param newZoomVal Новое значение this.zoom
+   * @param pointer Объект Phaser.Input.Pointer, содержащий координаты курсора.
+   */
+  private applyZoomToCursor(oldZoomVal: number, newZoomVal: number, pointer: Phaser.Input.Pointer): void {
+    if (!this.gameCamera) return;
+
+    // Координаты курсора в окне игры (не мировые)
+    const pointerScreenX = pointer.x;
+    const pointerScreenY = pointer.y;
+
+    // 1. Мировые координаты точки под курсором ДО изменения масштаба
+    // Важно: камера еще не отзумлена до newZoomVal визуально,
+    // но this.gameCamera.zoom уже может быть равен 1/oldZoomVal.
+    // Мы используем текущий scroll и старый фактор this.zoom (oldZoomVal), чтобы получить корректную точку.
+    // getWorldPoint использует this.cameras.main.zoom, который уже 1/oldZoomVal.
+    const worldPointBefore = this.gameCamera.getWorldPoint(pointerScreenX, pointerScreenY);
+
+    // 2. Применяем новый масштаб к камере
+    this.gameCamera.setZoom(1 / newZoomVal);
+
+    // 3. Мировые координаты той же точки на экране ПОСЛЕ изменения масштаба
+    const worldPointAfter = this.gameCamera.getWorldPoint(pointerScreenX, pointerScreenY);
+
+    // 4. Рассчитываем, на сколько нужно сместить камеру, чтобы worldPointBefore остался под курсором
+    // Смещение = Старая мировая позиция курсора - Новая мировая позиция курсора (при новом зуме)
+    // Если worldPointBefore.x (старая) = 500, worldPointAfter.x (новая) = 400 (т.е. сцена "уехала" влево относительно курсора),
+    // то scrollX должен УМЕНЬШИТЬСЯ на (400 - 500) = -100. То есть, scrollX_new = scrollX_old - (-100) = scrollX_old + 100.
+    // Или, scrollX_new = scrollX_old + (worldPointBefore.x - worldPointAfter.x)
+    this.gameCamera.scrollX += 0; //(worldPointAfter.x - worldPointBefore.x);
+    this.gameCamera.scrollY += 0; //(worldPointAfter.y - worldPointBefore.y);
+    
+    // Обновляем информер и конфигурацию камер
+    if (this.informer) {
+      this.informer.setZoom(newZoomVal);
+      this.informer.setCommand(`Масштаб: ${newZoomVal.toFixed(2)} (к курсору)`);
+    }
+    this.updateCamerasConfig();
+    console.log(`Zoom applied to cursor: old ${oldZoomVal.toFixed(2)}, new ${newZoomVal.toFixed(2)}`);
+  }
+
   /**
    * Обновляет настройки камер и прикрепление объектов к ним
    */
@@ -1691,14 +1751,19 @@ export class MainScene extends Phaser.Scene {
   private handleMouseWheel(pointer: Phaser.Input.Pointer, gameObjects: Phaser.GameObjects.GameObject[], deltaX: number, deltaY: number, deltaZ: number): void {
     // Предотвращаем стандартное действие браузера (прокрутку страницы)
     pointer.event.preventDefault();
+    const oldZoomVal = this.zoom; // Сохраняем текущий зум (фактор)
 
     if (deltaY < 0) {
-      // Колесико вверх (от себя) -> приближение (как 'X')
-      this.increaseZoom();
+      // Колесико вверх (от себя) -> приближение (как 'X' в нашей новой логике)
+      this.increaseZoom(); // Просто меняет this.zoom
     } else if (deltaY > 0) {
-      // Колесико вниз (на себя) -> отдаление (как 'Z')
-      this.decreaseZoom();
+      // Колесико вниз (на себя) -> отдаление (как 'Z' в нашей новой логике)
+      this.decreaseZoom(); // Просто меняет this.zoom
     }
-    // Если deltaY === 0, ничего не делаем
+
+    // Если зум действительно изменился (и не уперся в лимиты внутри increase/decreaseZoom)
+    if (this.zoom !== oldZoomVal) {
+        this.applyZoomToCursor(oldZoomVal, this.zoom, pointer);
+    }
   }
 } 

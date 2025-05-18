@@ -6,6 +6,7 @@
                 "-y",
                 "@modelcontextprotocol/server-filesystem",
                 "C:\\ERV\\projects-ex\\game-srs\\AS\\srs",
+                "C:\\ERV\\projects-ex\\game-srs\\game-srs-js",
                 "C:\\ERV\\projects-ex\\game-srs\\game-srs-js\\src",
                 "C:\\ERV\\projects-ex\\game-srs\\game-srs-js\\src\\objects",
                 "C:\\ERV\\projects-ex\\game-srs\\game-srs-js\\src\\utils",
