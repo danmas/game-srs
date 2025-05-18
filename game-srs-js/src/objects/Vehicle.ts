@@ -1028,7 +1028,7 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
     super.setRotation(radians);
   }
 
-  protected showWayPoints(): void {
+  public showWayPoints(): void {
     for (const wpData of this.wayPoints) {
         if (wpData.graphics) {
             wpData.graphics.setVisible(true); // При выборе все WP текущего объекта становятся видимы
@@ -1036,7 +1036,7 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
     }
   }
 
-  protected hideWayPoints(): void {
+  public hideWayPoints(): void {
     for (const wpData of this.wayPoints) {
         if (wpData.graphics) {
             if (this.entityType === 'Torpedo') {

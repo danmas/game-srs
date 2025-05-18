@@ -660,149 +660,107 @@ export class MainScene extends Phaser.Scene {
    * @param pointer Указатель мыши
    */
   private handlePointerDown(pointer: Phaser.Input.Pointer): void {
-    // Координаты щелчка в мире игры
-    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-    const logicalX = CoordUtils.phaserToLogicalX(worldPoint.x);
-    const logicalY = CoordUtils.phaserToLogicalY(worldPoint.y);
+    // Получаем "сырые" координаты клика (относительно окна игры, до масштабирования камерой)
+    const rawPointerX = pointer.x;
+    const rawPointerY = pointer.y;
 
-    // --- START: Torpedo Targeting Logic ---
-    if (this.playerControlState === PlayerControlState.SELECTING_TORPEDO_TARGET) {
+    // Конвертируем координаты клика в мировые координаты, учитывая скролл и зум игровой камеры
+    const worldPoint = this.gameCamera?.getWorldPoint(rawPointerX, rawPointerY) || new Phaser.Math.Vector2(rawPointerX, rawPointerY);
+    const worldX = worldPoint.x;
+    const worldY = worldPoint.y;
+
+    // Конвертируем мировые координаты в логические
+    const logicalClickPoint = new Phaser.Math.Vector2(
+      CoordUtils.phaserToLogicalX(worldX),
+      CoordUtils.phaserToLogicalY(worldY)
+    );
+
+    if (Settings.DEBUG) {
+      console.log(`Pointer Down: Raw(${rawPointerX.toFixed(1)}, ${rawPointerY.toFixed(1)}), World(${worldX.toFixed(1)}, ${worldY.toFixed(1)}), Logical(${logicalClickPoint.x.toFixed(1)}, ${logicalClickPoint.y.toFixed(1)})`);
+    }
+
+    // --- START: Player Torpedo Targeting Logic ---
+    if (this.playerControlState === PlayerControlState.SELECTING_TORPEDO_TARGET && this.myShip instanceof Submarine) {
       if (pointer.leftButtonDown()) {
-        if (this.myShip instanceof Submarine) {
-          // fireTorpedoTypeIPlayer expects logical coordinates
-          this.myShip.fireTorpedoTypeIPlayer(new Phaser.Math.Vector2(logicalX, logicalY)); 
-          this.cancelTorpedoTargeting();
-        }
+        this.myShip.fireTorpedoTypeIPlayer(logicalClickPoint);
+        this.cancelTorpedoTargeting();
+        // pointer.event.preventDefault(); 
+        return;
       } else if (pointer.rightButtonDown()) {
         this.cancelTorpedoTargeting();
+        pointer.event.preventDefault(); 
+        return;
       }
-      return; // Prevent other actions while targeting
     }
-    // --- END: Torpedo Targeting Logic ---
+    // --- END: Player Torpedo Targeting Logic ---
 
-    // Попробуем найти объект под курсором
+    // --- START: Waypoint and Object Selection Logic ---
     let clickedObject: Vehicle | null = null;
-    const allVehicles: Vehicle[] = [...this.whiteShips, ...this.redShips, ...this.whiteTorpedos, ...this.redTorpedos];
-    
+    const allVehicles = [...this.redShips, ...this.whiteShips, ...this.redTorpedos, ...this.whiteTorpedos];
+
     for (const vehicle of allVehicles) {
-      if (!vehicle.active) { // Пропускаем неактивные (уничтоженные) объекты
-        continue;
-      }
-      // Используем bounding box для проверки попадания
-      if (vehicle.getBounds().contains(worldPoint.x, worldPoint.y)) {
+      if (!vehicle.active) continue; 
+      const distance = Phaser.Math.Distance.Between(worldX, worldY, vehicle.x, vehicle.y);
+      if (distance < Vehicle.WAYPOINT_CLICK_DELETE_THRESHOLD) { 
         clickedObject = vehicle;
-        break; 
+        break;
       }
     }
 
-    if (clickedObject) {
+    if (pointer.leftButtonDown()) {
+      if (clickedObject) {
         this.setSelectedVehicleForInformer(clickedObject);
-        // Если у объекта есть метод onClick, вызываем его
-        if (typeof (clickedObject as any).onClick === 'function') {
-            (clickedObject as any).onClick();
-        }
-    }
-
-    // Начинаем перетаскивание камеры, только если это левая кнопка мыши
-    // и если не был кликнут объект (чтобы не мешать выбору)
-    if (pointer.leftButtonDown() && !clickedObject) {
-      this.isDragging = true;
-      this.dragStartX = pointer.x;
-      this.dragStartY = pointer.y;
-      return; // Завершаем обработку, чтобы не ставить WP при перетаскивании
-    }
-    
-    // Обработка правого клика мыши для добавления путевой точки
-    if (pointer.rightButtonDown()) {
-      if (this.myShip && this.selectedVehicleForInformer === this.myShip) {
-        // Сначала проверяем, не кликнули ли рядом с существующей WP для удаления
-        const wayPoints = this.myShip.getWayPoints(); // Нужен метод для получения waypoints
-        for (let i = 0; i < wayPoints.length; i++) {
-          const wpData = wayPoints[i];
-          // Графика WP уже находится в Phaser-координатах
-          if (wpData.graphics) {
-            const distanceToWpCenter = Phaser.Math.Distance.Between(
-              worldPoint.x, worldPoint.y, 
-              wpData.graphics.x, wpData.graphics.y
+      } else {
+        // Клик левой кнопкой на пустом месте:
+        // Начинает перетаскивание карты, НЕ СНИМАЯ ВЫДЕЛЕНИЕ
+        // this.setSelectedVehicleForInformer(null); // УБИРАЕМ ЭТУ СТРОКУ
+        
+        this.isDragging = true; // Начинаем перетаскивание
+        this.dragStartX = pointer.x;
+        this.dragStartY = pointer.y;
+      }
+    } else if (pointer.rightButtonDown()) {
+      // Только правый клик отвечает за WP и должен предотвращать контекстное меню
+      pointer.event.preventDefault(); 
+      if (this.myShip) { // Работаем с WP только если есть myShip
+        let wpDeleted = false;
+        if (this.myShip.hasWayPoints()) {
+          const waypoints = this.myShip.getWayPoints();
+          for (let i = waypoints.length - 1; i >= 0; i--) {
+            const wpPhaserPos = new Phaser.Math.Vector2(
+              CoordUtils.logicalToPhaserX(waypoints[i].point.x),
+              CoordUtils.logicalToPhaserY(waypoints[i].point.y)
             );
-            if (distanceToWpCenter < Settings.WAYPOINT_CLICK_DELETE_THRESHOLD) {
+            const distToWp = Phaser.Math.Distance.Between(worldX, worldY, wpPhaserPos.x, wpPhaserPos.y);
+            if (distToWp < Vehicle.WAYPOINT_CLICK_DELETE_THRESHOLD) {
               this.myShip.removeSpecificWayPoint(i);
-              if (this.informer) {
-                this.informer.setCommand(`WP ${i} удалена.`);
-              }
-              console.log(`WP ${i} removed for myShip.`);
-              return; // Завершаем обработку, точка удалена
+              wpDeleted = true;
+              break; 
             }
           }
         }
 
-        // Если не удалили существующую, то добавляем новую
-        const wasAlreadyMoving = this.myShip.isMovingOnWayPoint;
-        this.myShip.addWayPoint(logicalX, logicalY, Constants.WP_TYPE_MOVE);
-        
-        if (!wasAlreadyMoving) { // Если он НЕ двигался до этого, то запускаем движение
-          this.myShip.startMoveOnWP();
-          if (this.informer) {
-            this.informer.setCommand(`WP добавлена, идем к (лог.): X=${Math.floor(logicalX)}, Y=${Math.floor(logicalY)}`);
+        if (!wpDeleted) {
+          this.myShip.addWayPoint(logicalClickPoint.x, logicalClickPoint.y, Constants.WP_TYPE_MOVE);
+          if (!this.myShip.isMovingOnWayPoint) {
+            this.myShip.startMoveOnWP();
           }
-          console.log(`WP added and starting move for myShip: LX=${logicalX.toFixed(0)}, LY=${logicalY.toFixed(0)}`);
-        } else { // Если он УЖЕ двигался, то addWayPoint просто добавил точку в очередь
-          if (this.informer) {
-            this.informer.setCommand(`WP добавлена в маршрут (лог.): X=${Math.floor(logicalX)}, Y=${Math.floor(logicalY)}`);
-          }
-          console.log(`WP added to existing route for myShip: LX=${logicalX.toFixed(0)}, LY=${logicalY.toFixed(0)}`);
         }
-      } else if (this.informer) {
-        this.informer.setCommandAlarm("Выберите свой корабль для добавления WP");
+        // Обновляем отображение WP для myShip, если он выбран (что скорее всего так, если мы им управляем)
+        if (this.myShip.isSelected()) {
+            console.log('[MainScene.handlePointerDown] myShip IS selected. Calling showWayPoints...'); // ОТЛАДКА
+            this.myShip.showWayPoints(); 
+        } else {
+            console.log('[MainScene.handlePointerDown] myShip IS NOT selected. WP might not show.'); // ОТЛАДКА
+        }
       }
-      return; // Правый клик только для WP, не продолжаем другую логику клика
+    } else if (pointer.middleButtonDown()) {
+        this.isDragging = true;
+        this.dragStartX = pointer.x;
+        this.dragStartY = pointer.y;
+        pointer.event.preventDefault(); 
     }
-
-    if (this.gameState !== MainScene.STARTED || !this.myShip) {
-      return;
-    }
-    
-    // Обработка щелчка в зависимости от состояния
-    switch (this.inputTextState) {
-      case MainScene.ST_SELECT_SHIP_WAY_POINT:
-        this.myShip.addWayPoint(logicalX, logicalY, Constants.WP_TYPE_MOVE);
-        this.myShip.startMoveOnWP();
-        if (this.informer) {
-          this.informer.setCommand(`Установлена точка маршрута: ${Math.floor(logicalX)}, ${Math.floor(logicalY)}`);
-        }
-        break;
-        
-      case MainScene.ST_SELECT_TORP_WAY_POINT:
-        // Проверяем, что выбрано оружие
-        if (this.weaponSelect !== Constants.WEAPON_SELECT_UNKNOWN) {
-          // Запускаем торпеду в выбранном направлении
-          const torpedo = this.fireTorpedo(this.myShip, this.weaponSelect, logicalX, logicalY);
-          
-          if (torpedo && this.informer) {
-            this.informer.setCommand(`Торпеда запущена в направлении: ${Math.floor(logicalX)}, ${Math.floor(logicalY)}`);
-          } else if (this.informer) {
-            this.informer.setCommandAlarm("Не удалось запустить торпеду! Оружие не готово.");
-          }
-          
-          // Сбрасываем состояние выбора
-          this.inputTextState = MainScene.ST_UNKNOWN;
-          this.weaponSelect = Constants.WEAPON_SELECT_UNKNOWN;
-        }
-        break;
-        
-      default:
-        // В обычном режиме левый щелчок просто выбирает точку движения
-        // Если кликнули не по объекту и это левая кнопка
-        if (!clickedObject && pointer.leftButtonDown() && this.myShip === this.selectedVehicleForInformer) {
-          this.myShip.clearWayPoints(); // Очищаем предыдущий маршрут перед добавлением новой единственной точки
-          this.myShip.addWayPoint(logicalX, logicalY, Constants.WP_TYPE_MOVE);
-          this.myShip.startMoveOnWP();
-          if (this.informer) {
-            this.informer.setCommand(`Движение к (лог.): X=${Math.floor(logicalX)}, Y=${Math.floor(logicalY)}`);
-          }
-        }
-        break;
-    }
+    // --- END: Waypoint and Object Selection Logic ---
   }
   
   /**
