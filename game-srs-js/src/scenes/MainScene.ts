@@ -113,6 +113,7 @@ export class MainScene extends Phaser.Scene {
     input.on('pointerdown', this.handlePointerDown, this);
     input.on('pointermove', this.handlePointerMove, this);
     input.on('pointerup', this.handlePointerUp, this);
+    input.on('wheel', this.handleMouseWheel, this); // Добавляем обработчик колесика
     
     // Используем только один способ обработки клавиш, удаляем дублирование
     if (input.keyboard) {
@@ -722,6 +723,7 @@ export class MainScene extends Phaser.Scene {
     } else if (pointer.rightButtonDown()) {
       // Только правый клик отвечает за WP и должен предотвращать контекстное меню
       pointer.event.preventDefault(); 
+      pointer.event.stopPropagation(); // Добавляем stopPropagation
       if (this.myShip) { // Работаем с WP только если есть myShip
         let wpDeleted = false;
         if (this.myShip.hasWayPoints()) {
@@ -1676,5 +1678,27 @@ export class MainScene extends Phaser.Scene {
     }
 
     return torpedo;
+  }
+
+  /**
+   * Обработчик прокрутки колесика мыши для масштабирования
+   * @param pointer Указатель (содержит event)
+   * @param gameObjects Объекты под указателем (не используются здесь)
+   * @param deltaX Горизонтальная прокрутка (не используется)
+   * @param deltaY Вертикальная прокрутка (основной индикатор)
+   * @param deltaZ Прокрутка по Z (не используется в 2D)
+   */
+  private handleMouseWheel(pointer: Phaser.Input.Pointer, gameObjects: Phaser.GameObjects.GameObject[], deltaX: number, deltaY: number, deltaZ: number): void {
+    // Предотвращаем стандартное действие браузера (прокрутку страницы)
+    pointer.event.preventDefault();
+
+    if (deltaY < 0) {
+      // Колесико вверх (от себя) -> приближение (как 'X')
+      this.increaseZoom();
+    } else if (deltaY > 0) {
+      // Колесико вниз (на себя) -> отдаление (как 'Z')
+      this.decreaseZoom();
+    }
+    // Если deltaY === 0, ничего не делаем
   }
 } 
