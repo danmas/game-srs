@@ -634,6 +634,14 @@ export class MainScene extends Phaser.Scene {
         ship.update(this.timeLife, delta);
       }
     }
+
+    // Удаляем неактивные (уничтоженные) торпеды из массивов
+    this.redTorpedos = this.redTorpedos.filter(t => t.active);
+    this.whiteTorpedos = this.whiteTorpedos.filter(t => t.active);
+    
+    // Удаляем неактивные (уничтоженные) корабли из массивов
+    this.redShips = this.redShips.filter(s => s.active);
+    this.whiteShips = this.whiteShips.filter(s => s.active);
     
     // Проверяем условия завершения игры
     if (this.scenarioManager) {
@@ -677,12 +685,14 @@ export class MainScene extends Phaser.Scene {
     const allVehicles: Vehicle[] = [...this.whiteShips, ...this.redShips, ...this.whiteTorpedos, ...this.redTorpedos];
     
     for (const vehicle of allVehicles) {
-        // Простая проверка попадания в прямоугольник спрайта
-        // Для более точного определения можно использовать vehicle.getBounds()
-        if (vehicle.getBounds().contains(worldPoint.x, worldPoint.y)) {
-            clickedObject = vehicle;
-            break; 
-        }
+      if (!vehicle.active) { // Пропускаем неактивные (уничтоженные) объекты
+        continue;
+      }
+      // Используем bounding box для проверки попадания
+      if (vehicle.getBounds().contains(worldPoint.x, worldPoint.y)) {
+        clickedObject = vehicle;
+        break; 
+      }
     }
 
     if (clickedObject) {
@@ -853,12 +863,12 @@ export class MainScene extends Phaser.Scene {
     
     // Обработка масштабирования (Z/X) доступна всегда
     if (event.key === 'z' || event.key === 'Z' || event.keyCode === 90) {
-      this.increaseZoom();
+      this.decreaseZoom(); // БЫЛО: this.increaseZoom();
       return;
     }
     
     if (event.key === 'x' || event.key === 'X' || event.keyCode === 88) {
-      this.decreaseZoom();
+      this.increaseZoom(); // БЫЛО: this.decreaseZoom();
       return;
     }
     
@@ -940,14 +950,14 @@ export class MainScene extends Phaser.Scene {
         
       // Управление рулем (стрелки влево/вправо)
       case 'arrowleft':
-      case 'left':    // Для поддержки IE/Edge
-        console.log('Обработка стрелки влево');
+      // case 'left':    // Для поддержки IE/Edge - event.key === 'ArrowLeft' стандартно
+        console.log('Обработка стрелки влево по event.key');
         this.handleArrowLeft();
         break;
         
       case 'arrowright':
-      case 'right':    // Для поддержки IE/Edge
-        console.log('Обработка стрелки вправо');
+      // case 'right':   // Для поддержки IE/Edge - event.key === 'ArrowRight' стандартно
+        console.log('Обработка стрелки вправо по event.key');
         this.handleArrowRight();
         break;
         
@@ -1074,13 +1084,15 @@ export class MainScene extends Phaser.Scene {
             }
         }
         // --- END MODIFIED ---
-    } else if (keyCode === 37 && (key === 'arrowleft' || key === 'left')) { // Левая стрелка (дублируем из switch(key) для надежности или если switch(key) убран)
-        console.log('Обработка стрелки влево по keyCode');
-        this.handleArrowLeft();
-    } else if (keyCode === 39 && (key === 'arrowright' || key === 'right')) { // Правая стрелка
-        console.log('Обработка стрелки вправо по keyCode');
-        this.handleArrowRight();
-    }
+    } 
+    // УДАЛЕНО ДУБЛИРОВАНИЕ ОБРАБОТКИ СТРЕЛОК ПО keyCode
+    // else if (keyCode === 37 && (key === 'arrowleft' || key === 'left')) { 
+    //     console.log('Обработка стрелки влево по keyCode');
+    //     this.handleArrowLeft();
+    // } else if (keyCode === 39 && (key === 'arrowright' || key === 'right')) { 
+    //     console.log('Обработка стрелки вправо по keyCode');
+    //     this.handleArrowRight();
+    // }
     // Другие обработки по keyCode, если необходимы
   }
   
@@ -1227,171 +1239,6 @@ export class MainScene extends Phaser.Scene {
     }
     
     return ship;
-  }
-  
-  /**
-   * Запускает торпеду с корабля
-   * @param ship Корабль, с которого запускается торпеда
-   * @param weaponType Тип оружия
-   * @param targetX Целевая координата X
-   * @param targetY Целевая координата Y
-   */
-  public fireTorpedo(ship: Ship, weaponType: number, targetX: number, targetY: number): Torpedo | null {
-    // Проверяем готовность оружия
-    if (!ship.isWeaponReady(weaponType)) {
-      if (this.informer) {
-        this.informer.setCommandAlarm("Оружие не готово!");
-      }
-      return null;
-    }
-    
-    // Позиция корабля
-    const shipPos = ship.getPosition();
-    const shipDir = ship.getDirection();
-    
-    // Вычисляем позицию запуска торпеды (перед кораблем)
-    const launchDist = 15;
-    const launchX = shipPos.x + Math.sin(Phaser.Math.DegToRad(shipDir)) * launchDist;
-    const launchY = shipPos.y - Math.cos(Phaser.Math.DegToRad(shipDir)) * launchDist;
-    
-    // Вычисляем угол направления на цель
-    let targetAngle = shipDir;
-    
-    if (targetX !== undefined && targetY !== undefined) {
-      targetAngle = Phaser.Math.RadToDeg(
-        Phaser.Math.Angle.Between(launchX, launchY, targetX, targetY)
-      );
-      targetAngle = (targetAngle + 90) % 360;
-      if (targetAngle < 0) targetAngle += 360;
-    }
-    
-    // Определяем силы (принадлежность)
-    const forces = ship.getForces();
-    
-    // Создаем торпеду в зависимости от типа
-    let torpedo = null;
-    
-    switch (weaponType) {
-      case Constants.WEAPON_SELECT_TORP_I:
-        torpedo = this.createTorpedoTypeI(launchX, launchY, targetAngle, forces);
-        break;
-        
-      case Constants.WEAPON_SELECT_TORP_II:
-        torpedo = this.createTorpedoTypeII(launchX, launchY, targetAngle, forces);
-        
-        // Для торпеды типа II добавляем цель как точку маршрута
-        if (targetX !== undefined && targetY !== undefined && torpedo) {
-          torpedo.addWayPoint(CoordUtils.phaserToLogicalX(targetX), CoordUtils.phaserToLogicalY(targetY), Constants.WP_TYPE_TARGET);
-          torpedo.startMoveOnWP();
-        }
-        break;
-        
-      case Constants.WEAPON_SELECT_TORP_III:
-        torpedo = this.createTorpedoTypeIII(launchX, launchY, targetAngle, forces);
-        break;
-        
-      default:
-        if (this.informer) {
-          this.informer.setCommandAlarm("Неизвестный тип оружия!");
-        }
-        return null;
-    }
-    
-    return torpedo;
-  }
-  
-  /**
-   * Создает торпеду типа I
-   * @param x Позиция X
-   * @param y Позиция Y
-   * @param angle Угол направления
-   * @param forces Принадлежность к силам
-   */
-  private createTorpedoTypeI(x: number, y: number, angle: number, forces: number): TorpedoTypeI {
-    // Получаем параметры торпеды
-    const params = {
-      maxVelocity: Settings.TRP_I_MAX_VELOCITY,
-      lifeTimeSec: Settings.TRP_I_LIFE_TIME_SEC,
-      maneuvering: Settings.TRP_I_MANEVR_PRC,
-      reloadTimeSec: Settings.TRP_I_TIME_RELOAD_SEC,
-      damage: Settings.TRP_I_DAMEGE,
-      executionDist: Settings.TRP_I_DIST_EXECUTION
-    };
-    
-    // Создаем торпеду
-    const torpedo = new TorpedoTypeI(this, x, y, angle, params, forces);
-    
-    // Добавляем в соответствующий массив
-    if (forces === Constants.FORCES_RED) {
-      this.redTorpedos.push(torpedo);
-    } else {
-      this.whiteTorpedos.push(torpedo);
-    }
-    
-    return torpedo;
-  }
-  
-  /**
-   * Создает торпеду типа II
-   * @param x Позиция X
-   * @param y Позиция Y
-   * @param angle Угол направления
-   * @param forces Принадлежность к силам
-   */
-  private createTorpedoTypeII(x: number, y: number, angle: number, forces: number): TorpedoTypeII {
-    // Получаем параметры торпеды
-    const params = {
-      maxVelocity: Settings.TRP_II_MAX_VELOCITY,
-      lifeTimeSec: Settings.TRP_II_LIFE_TIME_SEC,
-      maneuvering: Settings.TRP_II_MANEVR_PRC,
-      reloadTimeSec: Settings.TRP_II_TIME_RELOAD_SEC,
-      damage: Settings.TRP_II_DAMEGE,
-      executionDist: Settings.TRP_II_DIST_EXECUTION
-    };
-    
-    // Создаем торпеду
-    const torpedo = new TorpedoTypeII(this, x, y, angle, params, forces);
-    
-    // Добавляем в соответствующий массив
-    if (forces === Constants.FORCES_RED) {
-      this.redTorpedos.push(torpedo);
-    } else {
-      this.whiteTorpedos.push(torpedo);
-    }
-    
-    return torpedo;
-  }
-  
-  /**
-   * Создает торпеду типа III
-   * @param x Позиция X
-   * @param y Позиция Y
-   * @param angle Угол направления
-   * @param forces Принадлежность к силам
-   */
-  private createTorpedoTypeIII(x: number, y: number, angle: number, forces: number): TorpedoTypeIII {
-    // Получаем параметры торпеды
-    const params = {
-      maxVelocity: Settings.TRP_III_MAX_VELOCITY,
-      lifeTimeSec: Settings.TRP_III_LIFE_TIME_SEC,
-      maneuvering: Settings.TRP_III_MANEVR_PRC,
-      reloadTimeSec: Settings.TRP_III_TIME_RELOAD_SEC,
-      damage: Settings.TRP_III_DAMEGE,
-      executionDist: Settings.TRP_III_DIST_EXECUTION,
-      targetAcceptDist: Settings.TRP_III_TRG_ACCEPT_DIST
-    };
-    
-    // Создаем торпеду
-    const torpedo = new TorpedoTypeIII(this, x, y, angle, params, forces);
-    
-    // Добавляем в соответствующий массив
-    if (forces === Constants.FORCES_RED) {
-      this.redTorpedos.push(torpedo);
-    } else {
-      this.whiteTorpedos.push(torpedo);
-    }
-    
-    return torpedo;
   }
   
   /**
@@ -1662,5 +1509,200 @@ export class MainScene extends Phaser.Scene {
       this.whiteTorpedos.push(torpedo);
     }
     console.log(`[MainScene] Torpedo ${torpedo.id} registered. Forces: ${torpedo.getForces() === Constants.FORCES_RED ? 'RED' : 'WHITE'}`);
+  }
+
+  // --- START: Refactored Torpedo Creation Logic ---
+
+  /**
+   * Создает и регистрирует торпеду в сцене.
+   * @param launchX Phaser координата X для старта торпеды
+   * @param launchY Phaser координата Y для старта торпеды
+   * @param launchAngleDeg Начальный угол торпеды в градусах
+   * @param forces Принадлежность торпеды
+   * @param weaponType Тип торпеды (WEAPON_SELECT_TORP_I/II/III)
+   * @param targetXForWP Опционально, Phaser X-координата цели для WP (для TorpedoTypeII)
+   * @param targetYForWP Опционально, Phaser Y-координата цели для WP (для TorpedoTypeII)
+   * @returns Созданный объект Torpedo или null, если не удалось создать.
+   */
+  private _spawnAndRegisterTorpedo(
+    launchX: number, 
+    launchY: number, 
+    launchAngleDeg: number, 
+    forces: number, 
+    weaponType: number,
+    targetXForWP?: number,
+    targetYForWP?: number
+  ): Torpedo | null {
+    let torpedo: Torpedo | null = null;
+
+    switch (weaponType) {
+      case Constants.WEAPON_SELECT_TORP_I:
+        torpedo = this._createTorpedoTypeI(launchX, launchY, launchAngleDeg, forces);
+        break;
+      case Constants.WEAPON_SELECT_TORP_II:
+        torpedo = this._createTorpedoTypeII(launchX, launchY, launchAngleDeg, forces);
+        if (torpedo && targetXForWP !== undefined && targetYForWP !== undefined) {
+          // Для торпеды типа II добавляем цель как точку маршрута
+          // Координаты для WP должны быть логическими
+          (torpedo as TorpedoTypeII).addWayPoint(
+            CoordUtils.phaserToLogicalX(targetXForWP), 
+            CoordUtils.phaserToLogicalY(targetYForWP), 
+            Constants.WP_TYPE_TARGET
+          );
+          (torpedo as TorpedoTypeII).startMoveOnWP();
+        }
+        break;
+      case Constants.WEAPON_SELECT_TORP_III:
+        torpedo = this._createTorpedoTypeIII(launchX, launchY, launchAngleDeg, forces);
+        break;
+      default:
+        if (this.informer) {
+          this.informer.setCommandAlarm("Неизвестный тип оружия для _spawnAndRegisterTorpedo!");
+        }
+        return null;
+    }
+
+    if (torpedo) {
+      this.registerCreatedTorpedo(torpedo); // Добавляет в сцену и массивы
+    }
+    
+    return torpedo;
+  }
+
+  /**
+   * Создает экземпляр торпеды типа I.
+   * (Ранее createTorpedoTypeI, переименован для ясности, что это только создание экземпляра)
+   */
+  private _createTorpedoTypeI(x: number, y: number, angle: number, forces: number): TorpedoTypeI {
+    const params = { /* ... параметры из Settings ... */ }; // Будет заполнено
+    // Логика получения параметров из Settings и создания new TorpedoTypeI
+    // Это должно быть скопировано из старого createTorpedoTypeI
+    // ...
+    // return new TorpedoTypeI(this, x, y, angle, params, forces);
+    // ЗАГЛУШКА, будет заполнено ниже
+    const trpParams = {
+      maxVelocity: Settings.TRP_I_MAX_VELOCITY,
+      lifeTimeSec: Settings.TRP_I_LIFE_TIME_SEC,
+      maneuvering: Settings.TRP_I_MANEVR_PRC,
+      reloadTimeSec: Settings.TRP_I_TIME_RELOAD_SEC,
+      damage: Settings.TRP_I_DAMEGE,
+      executionDist: Settings.TRP_I_DIST_EXECUTION,
+      type: Constants.WEAPON_SELECT_TORP_I // Добавим тип для информации
+    };
+    return new TorpedoTypeI(this, x, y, angle, trpParams, forces);
+  }
+
+  /**
+   * Создает экземпляр торпеды типа II.
+   */
+  private _createTorpedoTypeII(x: number, y: number, angle: number, forces: number): TorpedoTypeII {
+    // ЗАГЛУШКА, будет заполнено ниже
+    const trpParams = {
+      maxVelocity: Settings.TRP_II_MAX_VELOCITY,
+      lifeTimeSec: Settings.TRP_II_LIFE_TIME_SEC,
+      maneuvering: Settings.TRP_II_MANEVR_PRC,
+      reloadTimeSec: Settings.TRP_II_TIME_RELOAD_SEC,
+      damage: Settings.TRP_II_DAMEGE,
+      executionDist: Settings.TRP_II_DIST_EXECUTION,
+      type: Constants.WEAPON_SELECT_TORP_II
+    };
+    return new TorpedoTypeII(this, x, y, angle, trpParams, forces);
+  }
+
+  /**
+   * Создает экземпляр торпеды типа III.
+   */
+  private _createTorpedoTypeIII(x: number, y: number, angle: number, forces: number): TorpedoTypeIII {
+    // ЗАГЛУШКА, будет заполнено ниже
+    const trpParams = {
+      maxVelocity: Settings.TRP_III_MAX_VELOCITY,
+      lifeTimeSec: Settings.TRP_III_LIFE_TIME_SEC,
+      maneuvering: Settings.TRP_III_MANEVR_PRC,
+      reloadTimeSec: Settings.TRP_III_TIME_RELOAD_SEC,
+      damage: Settings.TRP_III_DAMEGE,
+      executionDist: Settings.TRP_III_DIST_EXECUTION,
+      targetAcceptDist: Settings.TRP_III_TRG_ACCEPT_DIST, // Специфично для TypeIII
+      type: Constants.WEAPON_SELECT_TORP_III
+    };
+    return new TorpedoTypeIII(this, x, y, angle, trpParams, forces);
+  }
+  
+  // --- END: Refactored Torpedo Creation Logic ---
+
+  /**
+   * Запускает торпеду с корабля (обновленный)
+   * @param ship Корабль, с которого запускается торпеда
+   * @param weaponType Тип оружия
+   * @param targetX Целевая координата X (Phaser world coordinates)
+   * @param targetY Целевая координата Y (Phaser world coordinates)
+   */
+  public fireTorpedo(ship: Ship, weaponType: number, targetX: number, targetY: number): Torpedo | null {
+    // 1. Проверяем готовность оружия у корабля (остается здесь)
+    if (!ship.isWeaponReady(weaponType)) {
+      if (this.informer) {
+        this.informer.setCommandAlarm("Оружие не готово! (Вызов из fireTorpedo)");
+      }
+      return null;
+    }
+    
+    // 2. Рассчитываем параметры запуска (позиция, угол)
+    const shipPos = ship.getPosition(); // Phaser world coordinates
+    const shipDir = ship.getDirection(); // Градусы
+    
+    const launchDist = 15; // Расстояние от центра корабля для точки старта торпеды
+    const launchX = shipPos.x + Math.sin(Phaser.Math.DegToRad(shipDir)) * launchDist;
+    const launchY = shipPos.y - Math.cos(Phaser.Math.DegToRad(shipDir)) * launchDist;
+    
+    // Угол направления на цель от точки запуска торпеды
+    let launchAngleDeg = shipDir; // По умолчанию - текущий курс корабля
+
+    // --- ИЗМЕНЕНИЕ ДЛЯ КУРСА ТОРПЕД ПОДЛОДКИ ---
+    if (ship instanceof Submarine) {
+      // Для подводных лодок торпеда всегда выходит по курсу лодки
+      launchAngleDeg = shipDir;
+      // targetX, targetY будут использованы для установки первой WP торпеды
+    } else {
+      // Для надводных кораблей (или если логика изменится), оставляем возможность наведения на цель
+      if (targetX !== undefined && targetY !== undefined) { 
+        launchAngleDeg = Phaser.Math.RadToDeg(
+          Phaser.Math.Angle.Between(launchX, launchY, targetX, targetY)
+        );
+        launchAngleDeg = (launchAngleDeg + 90 + 360) % 360;
+      }
+    }
+    // --- КОНЕЦ ИЗМЕНЕНИЯ ---
+    
+    const forces = ship.getForces();
+    
+    // 3. Вызываем новый метод для фактического создания и регистрации торпеды
+    const torpedo = this._spawnAndRegisterTorpedo(
+      launchX, 
+      launchY, 
+      launchAngleDeg, 
+      forces, 
+      weaponType,
+      targetX, // Передаем исходные targetX, targetY для WP торпеды TypeII
+      targetY
+    );
+
+    // 4. Обновляем информер (если торпеда успешно создана)
+    // Эту логику можно оставить здесь или перенести в AIWeaponControl/PlayerControls
+    if (torpedo && this.informer && ship === this.myShip) { // Только для корабля игрока
+        const logicalTargetX = CoordUtils.phaserToLogicalX(targetX);
+        const logicalTargetY = CoordUtils.phaserToLogicalY(targetY);
+        this.informer.setCommand(`Торпеда ${weaponType} запущена в направлении (лог.): ${Math.floor(logicalTargetX)}, ${Math.floor(logicalTargetY)}`);
+    } else if (!torpedo && this.informer && ship === this.myShip) {
+        this.informer.setCommandAlarm("Не удалось запустить торпеду! (после _spawnAndRegisterTorpedo)");
+    }
+    
+    // Важно! После выстрела корабль должен запустить перезарядку
+    // Это делается в ship.decrementTorpCount(), который вызывается из fireTorpedoTypeIPlayer (Submarine)
+    // или должен вызываться после успешного выстрела ИИ.
+    // AIWeaponControl должен вызывать ship.decrementTorpCount() ПОСЛЕ успешного вызова mainScene.fireTorpedo.
+    if (torpedo) {
+        ship.decrementTorpCount(weaponType); // Запускаем перезарядку и уменьшаем счетчик
+    }
+
+    return torpedo;
   }
 } 

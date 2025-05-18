@@ -116,6 +116,9 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
    * Рисует стандартную фигуру для объекта
    */
   protected drawVehicle(): void {
+    if (!this.scene || !this.active) { // Если сцена не существует или объект неактивен, ничего не делаем
+      return;
+    }
     // Создаем графику для отрисовки
     const graphics = (this.scene.add as Phaser.GameObjects.GameObjectFactory).graphics();
     

@@ -5,6 +5,7 @@ import { Settings } from '../utils/Settings';
 import { TorpedoParams } from './TorpedoParams';
 import { Torpedo } from './Torpedo';
 import { MainScene } from '../scenes/MainScene';
+import { AIWeaponControl } from '../ai/AIWeaponControl';
 
 /**
  * Класс корабля - базовый класс для всех кораблей и подводных лодок
@@ -29,6 +30,9 @@ export class Ship extends Vehicle {
   protected reloadTimeTorp1: number = 0;
   protected reloadTimeTorp2: number = 0;
   protected reloadTimeTorp3: number = 0;
+  
+  // Компонент для управления оружием ИИ
+  private aiWeaponControl: AIWeaponControl | null = null;
   
   /**
    * Конструктор
@@ -64,6 +68,9 @@ export class Ship extends Vehicle {
     // Показываем начальное положение руля, если корабль под управлением
     if (this.underControl) {
       this.showRudder();
+    } else {
+      // Если корабль не под управлением игрока, создаем ему контроллер оружия ИИ
+      this.aiWeaponControl = new AIWeaponControl(this, scene as MainScene);
     }
   }
   
@@ -121,6 +128,9 @@ export class Ship extends Vehicle {
    * Создает спрайт через add.graphics как для порта
    */
   protected drawShip(): void {
+    if (!this.scene || !this.active) { // Если сцена не существует или объект неактивен, ничего не делаем
+      return;
+    }
     // Определяем имя текстуры в зависимости от принадлежности
     const textureName = this.forces === Constants.FORCES_RED ? `ship_red_${this.id}` : `ship_white_${this.id}`;
     
@@ -338,92 +348,38 @@ export class Ship extends Vehicle {
     // Логика AI второго уровня (более специфичные действия)
     // Этот метод должен вызываться реже, чем AI_step_I
 
+    // 1. Логика движения (остается здесь, так как AIWeaponControl отвечает только за стрельбу)
     if (this.moveState === Vehicle.ST_WP_SEARCH_TARGET) {
-      // Логика движения по точкам для поиска цели
       if (!this.isMovingOnWayPoint || !this.hasWayPoints()) {
-        // Если не движемся по точкам или точек нет, генерируем новые
-        this.generateRandomWayPoint(); // Генерирует точку и запускает движение
-        if (this.wayPoints.length > 0 && this.wayPoints[0]) { // Добавлена проверка this.wayPoints[0]
+        this.generateRandomWayPoint(); 
+        if (this.wayPoints.length > 0 && this.wayPoints[0]) {
              console.log(`AI ${this.id}: New search WP generated. Target: ${this.wayPoints[0].point.x}, ${this.wayPoints[0].point.y} type: ${this.wayPoints[0].type}`);
-        }
-      } else {
-        // Движемся по точкам, проверяем, не пора ли сменить тактику
-        // Например, если текущая точка - точка поиска, и мы ее почти достигли,
-        // или если прошло достаточно времени.
-        // В AS здесь была проверка типа точки: if (way_point_tip[current_way_point] == WP_TARGET_SEARCH)
-        // Теперь это будет this.wayPoints[this.currentWayPointIndex].type
-        if (this.currentWayPointIndex !== -1 && this.wayPoints[this.currentWayPointIndex] && this.wayPoints[this.currentWayPointIndex].type === Constants.WP_TYPE_SEARCH) {
-          // Дополнительная логика для точки поиска, если нужна
         }
       }
     } else if (this.moveState === Vehicle.ST_WP_CONVOY_MOVING) {
-      // Логика движения в составе конвоя
-      // (пока не реализована подробно)
       if (!this.isMovingOnWayPoint || !this.hasWayPoints()) {
-        // Возможно, нужно запросить новые точки у ведущего или вернуться на маршрут
-        // Для примера, просто генерируем случайную точку
         this.generateRandomWayPoint(Constants.WP_TYPE_CONVOY);
-         if (this.wayPoints.length > 0 && this.wayPoints[0]) { // Добавлена проверка this.wayPoints[0]
+         if (this.wayPoints.length > 0 && this.wayPoints[0]) { 
             console.log(`AI ${this.id}: New convoy WP generated. Target: ${this.wayPoints[0].point.x}, ${this.wayPoints[0].point.y} type: ${this.wayPoints[0].type}`);
         }
       }
     } else if (this.moveState === Vehicle.ST_WP_TORP_DEFENCE_MOVING) {
-        // Логика уклонения от торпед
         if (!this.isMovingOnWayPoint || !this.hasWayPoints()) {
-            // Генерируем точку для маневра уклонения
-            this.generateRandomWayPoint(Constants.WP_TYPE_MANEUVER); // Используем новый тип для маневра
-             if (this.wayPoints.length > 0 && this.wayPoints[0]) { // Добавлена проверка this.wayPoints[0]
+            this.generateRandomWayPoint(Constants.WP_TYPE_MANEUVER); 
+             if (this.wayPoints.length > 0 && this.wayPoints[0]) { 
                 console.log(`AI ${this.id}: New maneuver WP generated. Target: ${this.wayPoints[0].point.x}, ${this.wayPoints[0].point.y} type: ${this.wayPoints[0].type}`);
             }
         }
     }
-    // ... Другие состояния AI ...
+    // ... Другие состояния AI движения ...
 
-    // Пример вызова стрельбы торпедами, если есть цель и оружие готово
-    // Эту логику нужно будет значительно расширить
+    // 2. Логика применения оружия (теперь через AIWeaponControl)
+    // Получаем все корабли из MainScene для передачи в AIWeaponControl
     const mainScene = this.scene as MainScene;
-    if (mainScene) {
-      let enemyShips: Ship[] = [];
-      if (this.forces === Constants.FORCES_RED) {
-        if (mainScene.getWhiteShips) enemyShips = mainScene.getWhiteShips();
-      } else {
-        if (mainScene.getRedShips) enemyShips = mainScene.getRedShips();
-      }
-
-      const activeEnemies = enemyShips.filter((v: Ship) => v.active && v.getForces() !== this.forces);
-
-      if (activeEnemies.length > 0) {
-        const target = activeEnemies[0] as Ship; // Выбираем первую попавшуюся активную цель
-        const weaponReady = this.isWeaponReady(Constants.WEAPON_SELECT_TORP_I);
-        const distanceToTarget = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
-        const angleToTargetRad = Phaser.Math.Angle.Between(this.x, this.y, target.x, target.y);
-        let angleToTargetDeg = (Phaser.Math.RadToDeg(angleToTargetRad) + 90 + 360) % 360;
-        const diffAngle = Phaser.Math.Angle.ShortestBetween(this.direction, angleToTargetDeg);
-
-        // --- START INTERPRETED DEBUG LOGS ---
-        console.log(`--- AI Ship ${this.id} (хочет атаковать Цель ID ${target.id}) ---`);
-        if (!target) {
-          console.log(`   [ОШИБКА] Цель не определена!`);
-          return; // Прерываем, если цели нет
-        }
-        console.log(`   Количество врагов: ${activeEnemies.length}`);
-        console.log(`   Оружие (Торп.I) готово: ${weaponReady} (На борту: ${this.torpedoOnBoardI}, Время перезарядки: ${this.reloadTimeTorp1} мс)`);
-        
-        const distanceOk = distanceToTarget < Settings.TRP_I_DIST_EXECUTION;
-        console.log(`   Дистанция до цели: ${distanceToTarget.toFixed(1)} (Макс. для атаки: ${Settings.TRP_I_DIST_EXECUTION}) -> ${distanceOk ? 'OK' : 'ДАЛЕКО'}`);
-        
-        const angleOk = Math.abs(diffAngle) < Settings.TRP_ATACK__ANGLE_WARNING;
-        console.log(`   Угол на цель (отклонение от курса): ${diffAngle.toFixed(1)}° (Макс. допуск: ${Settings.TRP_ATACK__ANGLE_WARNING}°) -> ${angleOk ? 'OK' : 'НЕ ПО КУРСУ'}`);
-        // --- END INTERPRETED DEBUG LOGS ---
-
-        if (target && weaponReady && distanceOk && angleOk) {
-            console.log(`   >>> AI Ship ${this.id}: УСЛОВИЯ ВЫПОЛНЕНЫ! СТРЕЛЯЮ Торпедой I по Цели ${target.id} (Координаты: X:${target.x.toFixed(0)}, Y:${target.y.toFixed(0)})`);
-            (this.scene as MainScene).fireTorpedo(this, Constants.WEAPON_SELECT_TORP_I, target.x, target.y);
-        } else {
-            console.log(`   --- AI Ship ${this.id}: Условия для стрельбы НЕ выполнены. Пропускаю выстрел.`);
-        }
-        console.log(`--- Конец оценки для AI Ship ${this.id} ---`);
-      }
+    if (mainScene && this.aiWeaponControl) {
+      // Собираем все корабли, которые могут быть целями
+      const allShipsForTargeting: Ship[] = [...mainScene.getRedShips(), ...mainScene.getWhiteShips()];
+      this.aiWeaponControl.evaluateAndFire(allShipsForTargeting);
     }
   }
   
