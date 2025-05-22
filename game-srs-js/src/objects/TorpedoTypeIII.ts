@@ -6,6 +6,8 @@ import { Constants } from '../utils/Constants';
 import { Settings } from '../utils/Settings';
 import { TorpedoParams } from './TorpedoParams';
 import { PhysicsUtils } from '../utils/PhysicsUtils';
+import { MainScene } from '../scenes/MainScene';
+import { CoordUtils } from '../utils/CoordUtils';
 
 /**
  * Торпеда Тип III - самонаводящаяся торпеда, ищущая цели по шуму
@@ -43,12 +45,12 @@ export class TorpedoTypeIII extends Torpedo {
     if (params.targetAcceptDist) {
       this.targetAcceptDist = params.targetAcceptDist;
     } else {
-      this.targetAcceptDist = 200.0;
+      this.targetAcceptDist = Settings.TRP_III_TRG_ACCEPT_DIST;
     }
     
     // Инициализируем поиск
     this.searchTimeMs = 0;
-    this.noiseDetectionRange = this.maxVelocity * Settings.NOISE_TRAKCING_RANGE;
+    this.noiseDetectionRange = this.maxVelocity * Settings.NOISE_THRESHOLD_ZONE_1_UNCERTAIN;
   }
   
   /**
@@ -171,18 +173,54 @@ export class TorpedoTypeIII extends Torpedo {
    * Торпеда типа III меняет направление на цель
    */
   public AI_step_II(): void {
-    // Если есть цель, меняем направление на нее
-    if (this.targetShip) {
-      // Устанавливаем направление на цель
-      const targetPos = this.targetShip.getPosition();
-      
-      // Вычисляем угол к цели
-      const angle = Phaser.Math.RadToDeg(
-        Phaser.Math.Angle.Between(this.position.x, this.position.y, targetPos.x, targetPos.y)
-      );
-      this.directionTarget = (angle + 90) % 360;
-      if (this.directionTarget < 0) {
-        this.directionTarget += 360;
+    if (!this.active || this.moveState === Vehicle.ST_WP_MOVING) {
+        return; // Уже движется к цели по WP или неактивна
+    }
+
+    let closestEnemy: Ship | null = null;
+    let minDistance = Infinity;
+    const mainScene = this.scene as MainScene;
+
+    // Определяем, какие корабли являются вражескими
+    const enemyShips = this.getForces() === Constants.FORCES_WHITE ? mainScene.getRedShips() : mainScene.getWhiteShips();
+
+    for (const enemy of enemyShips) {
+      if (!enemy.active) continue;
+
+      // Проверяем, видимо ли цель для самонаводящейся торпеды
+      // Используем порог для Зоны 1 как минимальный для "замечания" цели
+      const noiseReceivedByTorpedo = PhysicsUtils.getReceivedNoiseLevel(enemy, this.getPosition());
+      // Исправление для строки ~51
+      if (noiseReceivedByTorpedo < Settings.NOISE_THRESHOLD_ZONE_1_UNCERTAIN) { 
+        continue; // Цель слишком тихая или далеко, чтобы торпеда ее "увидела"
+      }
+
+      const distance = Phaser.Math.Distance.Between(this.x, this.y, enemy.x, enemy.y);
+      if (distance < minDistance && distance < this.targetAcceptDist) {
+        minDistance = distance;
+        closestEnemy = enemy;
+      }
+    }
+
+    if (closestEnemy) {
+      // Нашлись на цель, устанавливаем ее как WP
+      this.clearWayPoints(); 
+      const targetLogicalPos = CoordUtils.phaserToLogical(closestEnemy.getPosition());
+      this.addWayPoint(targetLogicalPos.x, targetLogicalPos.y, Constants.WP_TYPE_TORPEDO_TARGET);
+      this.startMoveOnWP(); 
+      this.moveState = Vehicle.ST_WP_MOVING; // Указываем, что движемся к цели
+      // console.log(`TorpedoTypeIII ${this.id} found target ${closestEnemy.id} at ${minDistance.toFixed(0)} units. Heading to WP.`);
+    } else {
+      // Цель не найдена (или вышла из радиуса), продолжаем движение по прямой или по последнему курсу
+      if (this.moveState === Vehicle.ST_WP_MOVING) {
+        // Если ранее двигались к цели, но потеряли ее, останавливаем движение по WP
+        // и продолжаем по последнему курсу.
+        this.stopMoveOnWayPoint(); // Это сбросит isMovingOnWayPoint и rudder
+        // this.moveState = Vehicle.ST_COMMAND_MOVING; // или ST_MOVE_UNKNOWN
+      }
+      // Если this.power == 0, а должен двигаться прямо, то нужно дать ему тягу
+      if (this.getPower() === Vehicle.POWER_0) {
+        this.setPower(Vehicle.POWER_4); // Средний ход для продолжения поиска
       }
     }
   }

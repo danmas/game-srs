@@ -3,6 +3,11 @@ import { Constants } from '../utils/Constants';
 import { Settings } from '../utils/Settings';
 import { CoordUtils } from '../utils/CoordUtils';
 import { MainScene } from '../scenes/MainScene';
+import { DetectionState } from '../utils/DetectionState';
+import { PerceivedTargetInfo } from '../interfaces/PerceivedTargetInfo';
+import { PhysicsUtils } from '../utils/PhysicsUtils';
+import { Informer } from '../utils/Informer';
+import { Ship } from './Ship';
 
 /**
  * Базовый класс для всех движущихся объектов
@@ -95,6 +100,12 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
     { threshold: 0.2, color: 0xFFA07A, alphaLine: 1.0, lineThickness: 2 }  // Светло-красный (светло-лососевый - пример)
   ];
 
+  // Новые поля для сенсоров и отображения
+  public perceivedTargets: Map<number, PerceivedTargetInfo>;
+  private truePhaserPosition: Phaser.Math.Vector2;
+  public textInfo: Phaser.GameObjects.Text | null = null;
+  private lastKnownPlayerShipForSensorMessages: Ship | null = null; // Для предотвращения дублирования сообщений
+
   /**
    * Конструктор
    * @param scene Сцена, к которой принадлежит объект
@@ -108,9 +119,24 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
     this.velocity = new Phaser.Math.Vector2(0, 0);
     this.id = Vehicle.nextId++; // Присваиваем уникальный ID и инкрементируем счетчик
     
+    // Инициализация новых полей
+    this.perceivedTargets = new Map<number, PerceivedTargetInfo>();
+    this.truePhaserPosition = new Phaser.Math.Vector2(x, y);
+
     // Добавление в сцену
     (scene.add as Phaser.GameObjects.GameObjectFactory).existing(this);
     
+    // Создание текстового поля для информации
+    this.textInfo = scene.add.text(this.x, this.y - this.displayHeight / 2 - 10, `ID: ${this.id}`, {
+      fontFamily: 'Arial',
+      fontSize: '12px',
+      color: '#ffffff',
+      align: 'center'
+    });
+    this.textInfo.setOrigin(0.5, 1);
+    this.textInfo.setDepth(this.depth + 1); // Выше спрайта
+    this.textInfo.setVisible(false); // По умолчанию скрыто, будет управляться логикой сенсоров
+
     // Если нет текстуры, рисуем стандартную фигуру
     if (!texture) {
       this.drawVehicle();
@@ -197,86 +223,63 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
     
     // Обновление направления на основе положения руля, если руль не в нейтральном положении
     if (this.rudder !== Vehicle.RUDER_0) {
-      // Скорость поворота зависит от положения руля, скорости и маневренности
-      // Реализуем поворот как в оригинальной ActionScript-версии
-      // direction_deg -= dt_ms * command_params.rudder * VehicleMoving.getAlphaR(cur_vel_gm, manevr_prc) * cur_vel_gm;
       const turnFactor = this.rudder * this.getAlphaR() * this.velocity.length();
-      
-      // Применяем формулу поворота как в оригинале
       this.direction -= delta * turnFactor;
-      
-      // Нормализуем угол
       this.direction = (this.direction + 360) % 360;
-      this.directionTarget = this.direction; // Целевое направление следует за текущим при управлении рулем
+      this.directionTarget = this.direction;
     }
-    // Иначе, если есть целевое направление, двигаемся к нему
     else if (this.direction !== this.directionTarget) {
-      // Находим кратчайший путь поворота
       let diff = this.directionTarget - this.direction;
       if (diff > 180) diff -= 360;
       if (diff < -180) diff += 360;
-      
-      // Скорость поворота зависит от мощности и коэффициентов
       let turnRate = this.power * (Settings.alfa_r_0 + Settings.alfa_r_30);
-      
-      // Применяем поворот с ограничением по времени
       if (Math.abs(diff) <= turnRate * deltaSeconds) {
         this.direction = this.directionTarget;
       } else {
         this.direction += Math.sign(diff) * turnRate * deltaSeconds;
       }
-      
-      // Нормализуем угол
       this.direction = (this.direction + 360) % 360;
     }
     
     // Обновление скорости в зависимости от мощности
     const targetSpeed = this.power * this.maxVelocity / Vehicle.POWER_6;
-    const currentSpeed = this.velocity.length();
-    
-    // Используем больший коэффициент для заметного изменения скорости
-    // и умножаем на 1000 для компенсации deltaSeconds, как в оригинальном коде
-    const inertiaFactor = Settings.alfa_v * 1000;
-    
+    let currentSpeed = this.velocity.length(); 
+    const inertiaFactor = Settings.alfa_v * 1000; 
+
     if (Math.abs(currentSpeed - targetSpeed) > 0.01) {
-      // Плавное изменение скорости с учетом инерции
-      const speedChange = (targetSpeed - currentSpeed) * inertiaFactor * deltaSeconds;
-      
-      if (currentSpeed < 0.1) {
-        // Если стоим на месте или почти остановились, начинаем движение в направлении
-        this.velocity.x = Math.sin(Phaser.Math.DegToRad(this.direction)) * targetSpeed * 0.1;
-        this.velocity.y = -Math.cos(Phaser.Math.DegToRad(this.direction)) * targetSpeed * 0.1;
-      } else {
-        // Иначе изменяем текущую скорость пропорционально
-        // Ограничиваем изменение скорости
-        let newSpeed = currentSpeed + speedChange;
-        if ((speedChange > 0 && newSpeed > targetSpeed) || 
-            (speedChange < 0 && newSpeed < targetSpeed)) {
-          newSpeed = targetSpeed;
-        }
-        
-        // Устанавливаем новое значение скорости, сохраняя направление
-        if (newSpeed > 0.1) {
-          const scale = newSpeed / currentSpeed;
-          this.velocity.scale(scale);
-        } else {
-          // Если скорость стала слишком маленькой, полностью останавливаемся
-          this.velocity.x = 0;
-          this.velocity.y = 0;
-        }
-      }
+        const speedChange = (targetSpeed - currentSpeed) * inertiaFactor * deltaSeconds;
+        currentSpeed = Math.max(0, currentSpeed + speedChange);
+    } else if (targetSpeed > 0 && currentSpeed < targetSpeed) {
+        currentSpeed = targetSpeed; 
     }
     
-    // Пересчитываем направление вектора скорости по текущему углу direction
-    if (this.velocity.length() > 0.1) {
-      const speed = this.velocity.length();
-      this.velocity.x = Math.sin(Phaser.Math.DegToRad(this.direction)) * speed;
-      this.velocity.y = -Math.cos(Phaser.Math.DegToRad(this.direction)) * speed;
+    if (currentSpeed < 0.01 && targetSpeed > 0.01) {
+        currentSpeed = targetSpeed * 0.1; 
     }
-    
-    // Обновляем позицию
+
+    // Устанавливаем вектор скорости в соответствии с this.direction и currentSpeed
+    if (currentSpeed > 0) {
+        this.velocity.setTo(0, -currentSpeed); // Направляем вверх (0 градусов) и масштабируем
+        this.velocity.rotate(Phaser.Math.DegToRad(this.direction)); // Поворачиваем по текущему курсу корабля
+    } else {
+        this.velocity.setTo(0, 0); // Если скорости нет, обнуляем вектор
+    }
+
+    // Обновление позиции на основе скорости и направления
     this.position.x += this.velocity.x * deltaSeconds;
     this.position.y += this.velocity.y * deltaSeconds;
+
+    // Обновляем this.x и this.y спрайта Phaser
+    this.x = this.position.x;
+    this.y = this.position.y;
+
+    // Сохраняем "истинную" позицию
+    this.truePhaserPosition.set(this.x, this.y);
+
+    // Обновление текстовой информации
+    if (this.textInfo) {
+      this.textInfo.setPosition(this.x, this.y - this.displayHeight / 2 - 10);
+    }
   }
   
   /**
@@ -797,6 +800,10 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
    * Переопределяем destroy, чтобы уничтожить и графику кругов
    */
   destroy(removeFromScene?: boolean): void { // Используем параметр как в GameObject.destroy
+    if (this.textInfo) {
+      this.textInfo.destroy();
+      this.textInfo = null;
+    }
     if (this.noiseCirclesGraphics) {
       this.noiseCirclesGraphics.destroy(removeFromScene); // Передаем тот же параметр
       this.noiseCirclesGraphics = null;
@@ -1046,5 +1053,126 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
             }
         }
     }
+  }
+
+  public getTruePositionBeforeSensorEffects(): Phaser.Math.Vector2 {
+    return this.truePhaserPosition;
+  }
+
+  /**
+   * Обновляет состояние обнаруженных целей на основе сенсорных данных.
+   * @param allVehicles Массив всех Vehicle на сцене для проверки.
+   * @param gameTime Текущее игровое время.
+   * @param informer Инстанс Informer для вывода сообщений.
+   */
+  public updateSensors(allVehicles: Vehicle[], gameTime: number, informer: Informer | null): void {
+    if (!this.active) {
+      this.perceivedTargets.clear();
+      return;
+    }
+
+    const mainScene = this.scene as MainScene;
+    const currentTickPlayerShip = mainScene.getMyShip(); // Получаем myShip из сцены
+    let newMessages: string[] = [];
+
+    for (const otherVehicle of allVehicles) {
+      if (!otherVehicle.active || otherVehicle === this || otherVehicle.getForces() === this.getForces()) {
+        if (this.perceivedTargets.has(otherVehicle.id)) {
+            this.perceivedTargets.delete(otherVehicle.id);
+        }
+        // Союзники и сам корабль всегда полностью видимы (если активны)
+        // Их видимость будет управляться в updateTargetVisuals
+        continue;
+      }
+
+      const receivedNoise = PhysicsUtils.getReceivedNoiseLevel(otherVehicle, this.getPosition());
+      let newDetectionState = DetectionState.NO_CONTACT;
+
+      if (receivedNoise >= Settings.NOISE_THRESHOLD_ZONE_3_IDENTIFIED) {
+        newDetectionState = DetectionState.ZONE_3_IDENTIFIED;
+      } else if (receivedNoise >= Settings.NOISE_THRESHOLD_ZONE_2_LOCALIZED) {
+        newDetectionState = DetectionState.ZONE_2_LOCALIZED;
+      } else if (receivedNoise >= Settings.NOISE_THRESHOLD_ZONE_1_UNCERTAIN) {
+        newDetectionState = DetectionState.ZONE_1_UNCERTAIN;
+      }
+
+      let currentInfo = this.perceivedTargets.get(otherVehicle.id);
+
+      if (newDetectionState === DetectionState.NO_CONTACT) {
+        if (currentInfo) {
+          if (currentInfo.detectionState !== DetectionState.NO_CONTACT && this === (currentTickPlayerShip as Vehicle | null)) {
+            newMessages.push(`Контакт с целью ${otherVehicle.id} (${otherVehicle.entityType}) потерян.`);
+          }
+          this.perceivedTargets.delete(otherVehicle.id);
+        }
+        continue;
+      }
+
+      const targetLogicalPos = CoordUtils.phaserToLogical(otherVehicle.getTruePositionBeforeSensorEffects());
+
+      if (!currentInfo) {
+        currentInfo = {
+          targetVehicle: otherVehicle,
+          detectionState: DetectionState.NO_CONTACT,
+          previousDetectionState: DetectionState.NO_CONTACT,
+          lastZone1PingTime: gameTime, // Инициализируем, чтобы первый "прыжок" мог случиться сразу
+          displayPositionLogical: new Phaser.Math.Vector2(targetLogicalPos.x, targetLogicalPos.y),
+        };
+        this.perceivedTargets.set(otherVehicle.id, currentInfo);
+      }
+
+      currentInfo.previousDetectionState = currentInfo.detectionState;
+      currentInfo.detectionState = newDetectionState;
+
+      if (this === (currentTickPlayerShip as Vehicle | null) && currentInfo.detectionState !== currentInfo.previousDetectionState) {
+        let message = `Цель ${otherVehicle.id} (${otherVehicle.entityType}): `;
+        switch (newDetectionState) {
+          case DetectionState.ZONE_1_UNCERTAIN: message += "обнаружена в неопределенной области (Зона 1)."; break;
+          case DetectionState.ZONE_2_LOCALIZED: message += "координаты уточнены (Зона 2)."; break;
+          case DetectionState.ZONE_3_IDENTIFIED: message += "полностью идентифицирована (Зона 3)."; break;
+        }
+        if (newDetectionState < currentInfo.previousDetectionState) {
+             if (newDetectionState === DetectionState.ZONE_1_UNCERTAIN && currentInfo.previousDetectionState > DetectionState.ZONE_1_UNCERTAIN) {
+                 message = `Цель ${otherVehicle.id} (${otherVehicle.entityType}): контакт ухудшился до Зоны 1.`;
+             } else if (newDetectionState === DetectionState.ZONE_2_LOCALIZED && currentInfo.previousDetectionState > DetectionState.ZONE_2_LOCALIZED) {
+                 message = `Цель ${otherVehicle.id} (${otherVehicle.entityType}): контакт ухудшился до Зоны 2.`;
+             }
+        }
+        newMessages.push(message);
+      }
+
+      if (newDetectionState === DetectionState.ZONE_1_UNCERTAIN) {
+        currentInfo.displayPositionLogical.x = targetLogicalPos.x; 
+        currentInfo.displayPositionLogical.y = targetLogicalPos.y;
+
+        if (gameTime - currentInfo.lastZone1PingTime >= Settings.ZONE_1_PING_INTERVAL_MS) {
+          const offsetX = (Math.random() - 0.5) * 2 * Settings.ZONE_1_DISPLACEMENT_DELTA_LOGICAL;
+          const offsetY = (Math.random() - 0.5) * 2 * Settings.ZONE_1_DISPLACEMENT_DELTA_LOGICAL;
+          currentInfo.displayPositionLogical.x += offsetX;
+          currentInfo.displayPositionLogical.y += offsetY;
+          currentInfo.lastZone1PingTime = gameTime;
+        }
+      } else {
+        currentInfo.displayPositionLogical.x = targetLogicalPos.x;
+        currentInfo.displayPositionLogical.y = targetLogicalPos.y;
+      }
+    }
+
+    const currentTargetIdsOnScene = allVehicles.filter(v => v.active && v !== this && v.getForces() !== this.getForces()).map(v => v.id);
+    for (const id of this.perceivedTargets.keys()) {
+        if (!currentTargetIdsOnScene.includes(id)) {
+            const lostTargetInfo = this.perceivedTargets.get(id);
+            if (lostTargetInfo && lostTargetInfo.detectionState !== DetectionState.NO_CONTACT && this === (currentTickPlayerShip as Vehicle | null)) {
+                 newMessages.push(`Контакт с целью ${id} (ранее ${lostTargetInfo.targetVehicle.entityType}) полностью потерян (уничтожен?).`);
+            }
+            this.perceivedTargets.delete(id);
+        }
+    }
+    
+    if (informer && newMessages.length > 0 && this === (currentTickPlayerShip as Vehicle | null)) {
+        const displayMessage = newMessages.slice(0, 2).join(' | ');
+        informer.setCommand(displayMessage);
+    }
+    this.lastKnownPlayerShipForSensorMessages = currentTickPlayerShip;
   }
 } 

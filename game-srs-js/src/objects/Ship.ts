@@ -345,41 +345,34 @@ export class Ship extends Vehicle {
    * Запускает ИИ - шаг 2 (принятие решений)
    */
   public AI_step_II(): void {
-    // Логика AI второго уровня (более специфичные действия)
-    // Этот метод должен вызываться реже, чем AI_step_I
-
-    // 1. Логика движения (остается здесь, так как AIWeaponControl отвечает только за стрельбу)
-    if (this.moveState === Vehicle.ST_WP_SEARCH_TARGET) {
-      if (!this.isMovingOnWayPoint || !this.hasWayPoints()) {
-        this.generateRandomWayPoint(); 
-        if (this.wayPoints.length > 0 && this.wayPoints[0]) {
-             console.log(`AI ${this.id}: New search WP generated. Target: ${this.wayPoints[0].point.x}, ${this.wayPoints[0].point.y} type: ${this.wayPoints[0].type}`);
-        }
-      }
-    } else if (this.moveState === Vehicle.ST_WP_CONVOY_MOVING) {
-      if (!this.isMovingOnWayPoint || !this.hasWayPoints()) {
-        this.generateRandomWayPoint(Constants.WP_TYPE_CONVOY);
-         if (this.wayPoints.length > 0 && this.wayPoints[0]) { 
-            console.log(`AI ${this.id}: New convoy WP generated. Target: ${this.wayPoints[0].point.x}, ${this.wayPoints[0].point.y} type: ${this.wayPoints[0].type}`);
-        }
-      }
-    } else if (this.moveState === Vehicle.ST_WP_TORP_DEFENCE_MOVING) {
-        if (!this.isMovingOnWayPoint || !this.hasWayPoints()) {
-            this.generateRandomWayPoint(Constants.WP_TYPE_MANEUVER); 
-             if (this.wayPoints.length > 0 && this.wayPoints[0]) { 
-                console.log(`AI ${this.id}: New maneuver WP generated. Target: ${this.wayPoints[0].point.x}, ${this.wayPoints[0].point.y} type: ${this.wayPoints[0].type}`);
-            }
-        }
+    // Логика ИИ для второго шага (реакция, атака)
+    if (!this.active || this.underControl) {
+      return; // Неактивен или под контролем игрока
     }
-    // ... Другие состояния AI движения ...
 
-    // 2. Логика применения оружия (теперь через AIWeaponControl)
-    // Получаем все корабли из MainScene для передачи в AIWeaponControl
-    const mainScene = this.scene as MainScene;
-    if (mainScene && this.aiWeaponControl) {
-      // Собираем все корабли, которые могут быть целями
-      const allShipsForTargeting: Ship[] = [...mainScene.getRedShips(), ...mainScene.getWhiteShips()];
-      this.aiWeaponControl.evaluateAndFire(allShipsForTargeting);
+    // Если корабль не в конвое, он может пытаться атаковать
+    if (!this.isConvoyShip && this.aiWeaponControl) {
+        // Получаем все корабли на сцене для передачи в evaluateAndFire,
+        // так как AIWeaponControl может нуждаться в этом списке для каких-то своих нужд,
+        // даже если основная логика выбора цели теперь внутри него.
+        // const mainScene = this.scene as MainScene;
+        // const allShips: Ship[] = [...mainScene.getRedShips(), ...mainScene.getWhiteShips()]; 
+        // ^^^ ЭТО БОЛЬШЕ НЕ НУЖНО, AIWeaponControl берет цели из owner.perceivedTargets
+
+        this.aiWeaponControl.evaluateAndFire(); // Вызываем без аргументов
+    }
+
+    // Если у корабля есть путь и он не движется по нему, запускаем движение
+    // (эта логика может быть более сложной в зависимости от состояния ИИ)
+    if (this.wayPoints.length > 0 && !this.isMovingOnWayPoint && this.moveState !== Vehicle.ST_WP_SEARCH_TARGET) {
+      // Если мы не в режиме поиска цели по WP (который сам управляет стартом/стопом WP)
+      // this.startMoveOnWP(); // Раскомментировать, если нужно авто-начало движения по WP
+    }
+    
+    // Пример: если нет точек маршрута и не ищет цель, корабль может просто стоять или патрулировать
+    if (this.wayPoints.length === 0 && this.moveState === Vehicle.ST_MOVE_UNKNOWN) {
+        // this.setPower(Vehicle.POWER_0); // Например, остановить
+        // или this.generateRandomWayPoint(Constants.WP_TYPE_PATROL_AREA); // Начать патрулирование
     }
   }
   

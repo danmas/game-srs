@@ -34,7 +34,7 @@ export class Settings {
   // Торпеды
   static readonly HIT_TIME_RELOAD_INCREASE: number = 1.3;
   static readonly HIT_SHIP_SPEED_DECREASE: number = 1.3;
-  static readonly SHIP_HIT_SIZE: number = 10;
+  static readonly SHIP_HIT_SIZE: number = 30;
   
   // Торпеда Тип I
   static readonly TRP_I_LIFE_TIME_SEC: number = 60;
@@ -83,9 +83,17 @@ export class Settings {
   static readonly MOVE_ON_TARGET_FROM_DIST: number = 1000;
   
   // Настройки шума
-  static readonly NOISE_TRAKCING_RANGE: number = 0.2;
-  static readonly NOISE_DIRECTION: number = 0.5;
-  static readonly NOISE_DETECTION: number = 0.8;
+  // static readonly NOISE_TRAKCING_RANGE: number = 0.2;
+  // static readonly NOISE_DIRECTION: number = 0.5;
+  // static readonly NOISE_DETECTION: number = 0.8;
+  public static readonly NOISE_THRESHOLD_ZONE_3_IDENTIFIED: number = 0.8; // Ранее NOISE_DETECTION
+  public static readonly NOISE_THRESHOLD_ZONE_2_LOCALIZED: number = 0.5;  // Ранее NOISE_DIRECTION
+  public static readonly NOISE_THRESHOLD_ZONE_1_UNCERTAIN: number = 0.2; // Ранее NOISE_TRAKCING_RANGE
+  // Все, что ниже NOISE_THRESHOLD_ZONE_1_UNCERTAIN - нет контакта
+
+  // Настройки для Зоны 1 (Неопределенный контакт)
+  public static readonly ZONE_1_PING_INTERVAL_MS: number = 1000; // 5 секунд
+  public static readonly ZONE_1_DISPLACEMENT_DELTA_LOGICAL: number = 150; // 50 игровых единиц в логических координатах
   
   // Настройки для точек маршрута и хвоста
   static readonly WAY_POINT_COLOR: number = 0x90EE90; // Светло-зеленый для путевых точек

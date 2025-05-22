@@ -14,6 +14,7 @@ import { ScenarioManager } from '../scenario/ScenarioManager';
 import { Obstruction } from '../objects/Obstruction';
 import { Scenario } from '../scenario/Scenario';
 import { CoordUtils } from '../utils/CoordUtils';
+import { DetectionState } from '../utils/DetectionState';
 
 // Enum for player control states - ADDED
 enum PlayerControlState {
@@ -439,18 +440,28 @@ export class MainScene extends Phaser.Scene {
    * @param time Текущее время
    */
   private updateSlowLoop(time: number): void {
+    // Определяем, с чьей точки зрения обновляем сенсоры
+    const perceivingShip = this.selectedVehicleForInformer || this.myShip;
+
+    if (perceivingShip) {
+      const allVehicles: Vehicle[] = [
+        ...this.redShips,
+        ...this.whiteShips,
+        ...this.redTorpedos,
+        ...this.whiteTorpedos
+      ].filter(v => v.active); // Передаем только активные для оптимизации
+      perceivingShip.updateSensors(allVehicles, time, this.informer);
+    }
+
     // Обновление информера
     if (this.informer) {
       this.informer.onSlowLoop(time);
       
-      // Обновляем общую информацию в информере (не зависит от selectedVehicleForInformer)
-      // Например, отладочная информация о камере и масштабе
       if (this.debugPanelEnabled && Settings.DEBUG && this.informer) { 
         this.informer.writeDebugText(`Камера: X=${Math.floor(this.cameras.main.scrollX)}, Y=${Math.floor(this.cameras.main.scrollY)}`);
         this.informer.writeDebugText(`Масштаб: ${this.zoom.toFixed(2)}`);
       }
 
-      // Обновляем информацию о шуме и другие данные для selectedVehicleForInformer
       if (this.selectedVehicleForInformer) {
         const vehicle = this.selectedVehicleForInformer;
         const phaserPos = vehicle.getPosition(); 
@@ -470,12 +481,10 @@ export class MainScene extends Phaser.Scene {
         const noiseVal = vehicle.getNoiseStrength();
         this.informer.writeRightField("NOISE", noiseVal.toFixed(2));
 
-        // Если selectedVehicleForInformer это myShip, обновляем специфичные для него данные
-        if (vehicle === this.myShip) {
+        if (vehicle === this.myShip && this.myShip) { // Убедимся, что myShip существует
             this.informer.setSpeed(this.myShip.getSpeed());
             this.informer.setDirection(this.myShip.getDirection().toString());
             this.informer.setPower(this.myShip.getPower().toString());
-             // Обновляем индикаторы торпед
             this.informer.panelLampReadyNotReady(
                 Constants.LAMP_TRPRD_I, 
                 this.myShip.isWeaponReady(Constants.WEAPON_SELECT_TORP_I)
@@ -488,13 +497,12 @@ export class MainScene extends Phaser.Scene {
                 Constants.LAMP_TRPRD_III, 
                 this.myShip.isWeaponReady(Constants.WEAPON_SELECT_TORP_III)
             );
-             // Обновляем индикатор наличия точек маршрута
             if (this.myShip.hasWayPoints()) {
                 this.informer.panelLampActive(Constants.LAMP_WP);
             } else {
                 this.informer.panelLampOff(Constants.LAMP_WP);
             }
-            // Проверяем наличие торпед в радиусе атаки
+            // Используем восстановленный метод
             const hasEnemyTorpedosNearby = this.checkEnemyTorpedosNearby();
             if (hasEnemyTorpedosNearby) {
                 this.informer.panelLampBlinkAlarmWarning(Constants.LAMP_TRP_ATACK);
@@ -502,107 +510,132 @@ export class MainScene extends Phaser.Scene {
                 this.informer.panelLampOff(Constants.LAMP_TRP_ATACK);
             }
         }
-
       } else {
-        // Если ничего не выбрано, очищаем поле шума или ставим прочерк
         this.informer.writeRightField("NOISE", "--");
       }
     }
     
+    this.updateTargetVisuals(); // Обновление видимости и отображения целей
+
     // Обновление ИИ кораблей
-    // Шаг 1 - анализ ситуации
     for (const ship of this.redShips) {
       if (!ship.isUnderControl()) {
         ship.AI_step_I();
       }
     }
-    
     for (const ship of this.whiteShips) {
       if (!ship.isUnderControl()) {
         ship.AI_step_I();
       }
     }
-    
-    // Шаг 2 - реакция на угрозы
     for (const ship of this.redShips) {
       if (!ship.isUnderControl()) {
         ship.AI_step_II();
       }
     }
-    
     for (const ship of this.whiteShips) {
       if (!ship.isUnderControl()) {
         ship.AI_step_II();
       }
     }
-    
-    // Обновление ИИ самонаводящихся торпед
     for (const torpedo of this.redTorpedos) {
       torpedo.AI_step_I();
       torpedo.AI_step_II();
     }
-    
     for (const torpedo of this.whiteTorpedos) {
       torpedo.AI_step_I();
       torpedo.AI_step_II();
     }
-    
-    // Обновление индикаторов в информационной панели
-    if (this.informer && this.myShip) {
-      // Обновляем индикаторы торпед
-      this.informer.panelLampReadyNotReady(
-        Constants.LAMP_TRPRD_I, 
-        this.myShip.isWeaponReady(Constants.WEAPON_SELECT_TORP_I)
-      );
-      
-      this.informer.panelLampReadyNotReady(
-        Constants.LAMP_TRPRD_II, 
-        this.myShip.isWeaponReady(Constants.WEAPON_SELECT_TORP_II)
-      );
-      
-      this.informer.panelLampReadyNotReady(
-        Constants.LAMP_TRPRD_III, 
-        this.myShip.isWeaponReady(Constants.WEAPON_SELECT_TORP_III)
-      );
-      
-      // Обновляем индикатор наличия точек маршрута
-      if (this.myShip.hasWayPoints()) {
-        this.informer.panelLampActive(Constants.LAMP_WP);
-      } else {
-        this.informer.panelLampOff(Constants.LAMP_WP);
-      }
-      
-      // Проверяем наличие торпед в радиусе атаки
-      const hasEnemyTorpedosNearby = this.checkEnemyTorpedosNearby();
-      if (hasEnemyTorpedosNearby) {
-        this.informer.panelLampBlinkAlarmWarning(Constants.LAMP_TRP_ATACK);
-      } else {
-        this.informer.panelLampOff(Constants.LAMP_TRP_ATACK);
-      }
-    }
   }
-  
+
   /**
-   * Проверяет, есть ли торпеды противника рядом с кораблем игрока
+   * Обновляет визуальное представление всех целей на основе данных от выбранного корабля.
    */
-  private checkEnemyTorpedosNearby(): boolean {
-    if (!this.myShip) return false;
-    
-    const enemyTorpedos = this.myShip.getForces() === Constants.FORCES_WHITE ? 
-      this.redTorpedos : this.whiteTorpedos;
-    
-    for (const torpedo of enemyTorpedos) {
-      const distance = Phaser.Math.Distance.Between(
-        this.myShip.getPosition().x, this.myShip.getPosition().y,
-        torpedo.getPosition().x, torpedo.getPosition().y
-      );
-      
-      if (distance < Settings.TRP_ATACK_ALARM_DIST) {
-        return true;
+  private updateTargetVisuals(): void {
+    const perceivingShip = this.selectedVehicleForInformer || this.myShip;
+    if (!perceivingShip) return;
+
+    const allPotentialTargets: Vehicle[] = [
+        ...this.redShips,
+        ...this.whiteShips,
+        ...this.redTorpedos,
+        ...this.whiteTorpedos
+    ];
+
+    for (const vehicle of allPotentialTargets) {
+      if (!vehicle.active) { 
+        vehicle.setVisible(false);
+        if (vehicle.textInfo) vehicle.textInfo.setVisible(false);
+        continue;
+      }
+
+      if (vehicle === perceivingShip || vehicle.getForces() === perceivingShip.getForces()) {
+        vehicle.setVisible(true);
+        const realPos = vehicle.getTruePositionBeforeSensorEffects();
+        vehicle.setPosition(realPos.x, realPos.y);
+        if (vehicle.textInfo) {
+          vehicle.textInfo.setVisible(true);
+          let infoText = `ID: ${vehicle.id}`;
+          if (vehicle instanceof Ship) { 
+            infoText += `\nSpd: ${vehicle.getSpeed().toFixed(1)} Dir: ${vehicle.getDirection().toFixed(0)}`;
+            if (vehicle instanceof Submarine) {
+                infoText += `\nDepth: ${vehicle.getDepth()}`;
+            }
+          } else if (vehicle instanceof Torpedo) {
+             infoText += `\nTrp Spd: ${vehicle.getSpeed().toFixed(1)}`;
+          }
+          vehicle.textInfo.setText(infoText);
+        }
+        continue;
+      }
+
+      const perceivedInfo = perceivingShip.perceivedTargets.get(vehicle.id);
+
+      if (!perceivedInfo || perceivedInfo.detectionState === DetectionState.NO_CONTACT) {
+        vehicle.setVisible(false);
+        if (vehicle.textInfo) vehicle.textInfo.setVisible(false);
+      } else {
+        vehicle.setVisible(true); 
+        // Используем новый метод CoordUtils.logicalToPhaser
+        const displayPhaserPos = CoordUtils.logicalToPhaser(perceivedInfo.displayPositionLogical);
+        const realPhaserPos = vehicle.getTruePositionBeforeSensorEffects();
+
+        switch (perceivedInfo.detectionState) {
+          case DetectionState.ZONE_1_UNCERTAIN:
+            vehicle.setPosition(displayPhaserPos.x, displayPhaserPos.y);
+            if (vehicle.textInfo) {
+              vehicle.textInfo.setVisible(true);
+              vehicle.textInfo.setText(`ID: ${vehicle.id}\nCONTACT UNCLEAR`);
+            }
+            break;
+
+          case DetectionState.ZONE_2_LOCALIZED:
+            vehicle.setPosition(realPhaserPos.x, realPhaserPos.y);
+            if (vehicle.textInfo) {
+              vehicle.textInfo.setVisible(true);
+              vehicle.textInfo.setText(`ID: ${vehicle.id}\nCONTACT LOCALIZED`);
+            }
+            break;
+
+          case DetectionState.ZONE_3_IDENTIFIED:
+            vehicle.setPosition(realPhaserPos.x, realPhaserPos.y);
+            if (vehicle.textInfo) {
+              vehicle.textInfo.setVisible(true);
+              let infoText = `ID: ${vehicle.id}`;
+              if (vehicle instanceof Ship) {
+                 infoText += `\nTyp: ${vehicle.constructor.name}\nSpd: ${vehicle.getSpeed().toFixed(1)} Dir: ${vehicle.getDirection().toFixed(0)}`;
+                 if (vehicle instanceof Submarine) {
+                    infoText += `\nDepth: ${vehicle.getDepth()}`;
+                 }
+              } else if (vehicle instanceof Torpedo) {
+                 infoText += `\nTyp: TORPEDO\nSpd: ${vehicle.getSpeed().toFixed(1)}`;
+              }
+              vehicle.textInfo.setText(infoText);
+            }
+            break;
+        }
       }
     }
-    
-    return false;
   }
   
   /**
@@ -832,6 +865,19 @@ export class MainScene extends Phaser.Scene {
     // Обработка клавиши S для старта/стопа игры независимо от текущего состояния
     if (event.key === 's' || event.key === 'S' || event.keyCode === 83) {
       this.startStopHandler();
+      return;
+    }
+    
+    // Обработка Tab для выбора своего корабля (myShip)
+    if (event.key === 'Tab' || event.keyCode === 9) {
+      event.preventDefault(); // Предотвращаем стандартное поведение Tab (переключение фокуса)
+      if (this.myShip) {
+        this.setSelectedVehicleForInformer(this.myShip);
+        this.centerOnShip(); // Центрируем камеру на myShip
+        if (this.informer) {
+          this.informer.setCommand("Выбран ваш корабль (Tab).");
+        }
+      }
       return;
     }
     
@@ -1765,5 +1811,28 @@ export class MainScene extends Phaser.Scene {
     if (this.zoom !== oldZoomVal) {
         this.applyZoomToCursor(oldZoomVal, this.zoom, pointer);
     }
+  }
+
+  /**
+   * Проверяет, есть ли торпеды противника рядом с кораблем игрока
+   */
+  private checkEnemyTorpedosNearby(): boolean {
+    if (!this.myShip) return false;
+    
+    const enemyTorpedos = this.myShip.getForces() === Constants.FORCES_WHITE ? 
+      this.redTorpedos : this.whiteTorpedos;
+    
+    for (const torpedo of enemyTorpedos) {
+      if (!torpedo.active) continue; // Пропускаем неактивные торпеды
+      const distance = Phaser.Math.Distance.Between(
+        this.myShip.getPosition().x, this.myShip.getPosition().y,
+        torpedo.getPosition().x, torpedo.getPosition().y
+      );
+      
+      if (distance < Settings.TRP_ATACK_ALARM_DIST) {
+        return true;
+      }
+    }
+    return false;
   }
 } 

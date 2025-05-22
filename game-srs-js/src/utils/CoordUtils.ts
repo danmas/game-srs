@@ -48,4 +48,28 @@ export class CoordUtils {
   public static phaserToLogicalY(phaserY: number): number {
     return phaserY - CoordUtils.worldCenterY;
   }
+
+  /**
+   * Преобразует логические координаты (Vector2) в координаты Phaser (Vector2).
+   * @param logicalPoint Точка с логическими координатами (x,y), где (0,0) - центр мира.
+   * @returns Точка с координатами в системе Phaser.
+   */
+  public static logicalToPhaser(logicalPoint: Phaser.Math.Vector2): Phaser.Math.Vector2 {
+    return new Phaser.Math.Vector2(
+      logicalPoint.x + CoordUtils.worldCenterX,
+      logicalPoint.y + CoordUtils.worldCenterY
+    );
+  }
+
+  /**
+   * Преобразует координаты Phaser (Vector2) в логические координаты (Vector2).
+   * @param phaserPoint Точка с координатами Phaser (x,y).
+   * @returns Точка с логическими координатами, где (0,0) - центр мира.
+   */
+  public static phaserToLogical(phaserPoint: Phaser.Math.Vector2): Phaser.Math.Vector2 {
+    return new Phaser.Math.Vector2(
+      phaserPoint.x - CoordUtils.worldCenterX,
+      phaserPoint.y - CoordUtils.worldCenterY
+    );
+  }
 } 
