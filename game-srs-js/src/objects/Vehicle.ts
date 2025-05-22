@@ -198,19 +198,24 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
     this.updatePhysics(delta);
     
     this.setPosition(this.position.x, this.position.y); 
-    this.setSpriteRotation(Phaser.Math.DegToRad(this.direction));
+    this.setRotation(Phaser.Math.DegToRad(this.direction));
+
+    if (this.textInfo && this.textInfo.visible) { 
+        this.textInfo.setPosition(this.x, this.y - this.displayHeight / 2 - 10);
+    }
 
     if (this.noiseCirclesGraphics) {
       const mainScene = this.scene as MainScene;
       const isMethodAvailable = mainScene && typeof mainScene.isDebugPanelActive === 'function';
       const debugPanelIsActive = isMethodAvailable && mainScene.isDebugPanelActive();
       const showAllNoiseCirclesInDebug = Settings.DEBUG && debugPanelIsActive;
-      const finalShouldShowCircles = this.displaySelected || showAllNoiseCirclesInDebug;
+      
+      const finalShouldShowCircles = (this.displaySelected || showAllNoiseCirclesInDebug) && this.entityType !== 'Torpedo';
 
       if (finalShouldShowCircles) {
         this.updateNoiseCircles(); 
-        this.noiseCirclesGraphics.x = this.x;
-        this.noiseCirclesGraphics.y = this.y;
+        this.noiseCirclesGraphics.x = this.truePhaserPosition.x;
+        this.noiseCirclesGraphics.y = this.truePhaserPosition.y;
         this.noiseCirclesGraphics.visible = true;
       } else {
         this.noiseCirclesGraphics.visible = false;
