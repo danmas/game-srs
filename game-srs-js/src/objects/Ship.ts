@@ -113,7 +113,7 @@ export class Ship extends Vehicle {
    */
   protected onClick(): void {
     // Визуально выделяем корабль
-    this.setSelected(true); 
+    this.setSelected(true);
 
     // Сообщаем главной сцене, что этот корабль теперь выбран для информера
     const mainScene = this.scene as MainScene; // Используем явное приведение типа, если MainScene импортирована
