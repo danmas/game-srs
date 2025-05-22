@@ -1835,4 +1835,12 @@ export class MainScene extends Phaser.Scene {
     }
     return false;
   }
+
+  /**
+   * Возвращает состояние активности панели отладки.
+   * @returns true, если панель отладки включена, иначе false.
+   */
+  public isDebugPanelActive(): boolean {
+    return this.debugPanelEnabled;
+  }
 } 

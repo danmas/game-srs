@@ -191,26 +191,30 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
   update(time: number, delta: number): void {
     this.timeLive += delta;
     
-    // Обновляем движение по путевым точкам, если активно
     if (this.isMovingOnWayPoint) {
       this.updateMoveOnWayPoint(delta);
     }
     
-    // Обновляем физику (учитывает текущий руль и мощность)
     this.updatePhysics(delta);
     
-    // Обновляем позицию спрайта и поворот
-    this.setPosition(this.position.x, this.position.y); // position обновляется в updatePhysics
-    this.setSpriteRotation(Phaser.Math.DegToRad(this.direction)); // direction обновляется в updatePhysics или updateMoveOnWayPoint (через setRudder)
+    this.setPosition(this.position.x, this.position.y); 
+    this.setSpriteRotation(Phaser.Math.DegToRad(this.direction));
 
-    // Обновляем круги шума, если они есть и объект выбран
-    if (this.noiseCirclesGraphics && (this.displaySelected /*|| Settings.DEBUG_SHOW_ALL_NOISE_CIRCLES*/)) {
-      this.updateNoiseCircles();
-      this.noiseCirclesGraphics.x = this.x;
-      this.noiseCirclesGraphics.y = this.y;
-      this.noiseCirclesGraphics.visible = true;
-    } else if (this.noiseCirclesGraphics) {
-      this.noiseCirclesGraphics.visible = false;
+    if (this.noiseCirclesGraphics) {
+      const mainScene = this.scene as MainScene;
+      const isMethodAvailable = mainScene && typeof mainScene.isDebugPanelActive === 'function';
+      const debugPanelIsActive = isMethodAvailable && mainScene.isDebugPanelActive();
+      const showAllNoiseCirclesInDebug = Settings.DEBUG && debugPanelIsActive;
+      const finalShouldShowCircles = this.displaySelected || showAllNoiseCirclesInDebug;
+
+      if (finalShouldShowCircles) {
+        this.updateNoiseCircles(); 
+        this.noiseCirclesGraphics.x = this.x;
+        this.noiseCirclesGraphics.y = this.y;
+        this.noiseCirclesGraphics.visible = true;
+      } else {
+        this.noiseCirclesGraphics.visible = false;
+      }
     }
   }
   
@@ -989,17 +993,9 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
     if (!this.noiseCirclesGraphics) return;
     this.noiseCirclesGraphics.clear();
 
-    // Рисуем круги только если объект выбран
-    if (!this.displaySelected) {
-      return;
-    }
-
     const sourceNoiseOutput = this.getNoiseStrength();
 
-    // Объект не шумит или шум слишком мал для отображения минимального порога
-    // Пороги в AS очень низкие, поэтому отсечка по sourceNoiseOutput < 0.1 может быть слишком грубой.
-    // Будем доверять тому, что если радиус получается <=0, круг не нарисуется.
-    if (sourceNoiseOutput <= 0) { // Достаточно проверить, что шум вообще есть
+    if (sourceNoiseOutput <= 0) {
         return;
     }
 
@@ -1010,21 +1006,10 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
       if (radiusSquared <= 0) continue;
 
       let radius = Math.sqrt(radiusSquared);
-
-      // В AS радиус умножался на main.getZoom().
-      // В Phaser, если камера масштабирует сцену, то размеры объектов (включая графику)
-      // также масштабируются. Поэтому явное умножение на зум здесь не нужно,
-      // если noiseCirclesGraphics является частью отмасштабированной сцены.
-      // Оставим пока без явного умножения на зум, так как графика привязана к сцене.
-      
-      // Ограничим максимальный радиус отображения, чтобы избежать слишком больших кругов
-      // Это значение нужно будет подобрать. Settings.MAX_DETECTION_RANGE может быть слишком большим.
-      const maxDisplayRadius = Settings.SCREEN_WIDTH * 2; // Например, два экрана
+      const maxDisplayRadius = Settings.SCREEN_WIDTH * 2; 
 
       if (radius > 0 && radius <= maxDisplayRadius) {
         this.noiseCirclesGraphics.lineStyle(T.lineThickness, T.color, T.alphaLine);
-        // Круги рисуются относительно центра графического объекта (0,0),
-        // а сам графический объект позиционируется по кораблю в Vehicle.update().
         this.noiseCirclesGraphics.strokeCircle(0, 0, radius);
       }
     }
