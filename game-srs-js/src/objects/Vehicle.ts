@@ -105,6 +105,7 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
   private truePhaserPosition: Phaser.Math.Vector2;
   public textInfo: Phaser.GameObjects.Text | null = null;
   private lastKnownPlayerShipForSensorMessages: Ship | null = null; // Для предотвращения дублирования сообщений
+  public isPositionOverriddenBySensorEffect: boolean = false; // <--- ВОЗВРАЩАЕМ ФЛАГ
 
   /**
    * Конструктор
@@ -121,7 +122,7 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
     
     // Инициализация новых полей
     this.perceivedTargets = new Map<number, PerceivedTargetInfo>();
-    this.truePhaserPosition = new Phaser.Math.Vector2(x, y);
+    this.truePhaserPosition = new Phaser.Math.Vector2(this.position.x, this.position.y);
 
     // Добавление в сцену
     (scene.add as Phaser.GameObjects.GameObjectFactory).existing(this);
@@ -143,7 +144,7 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
     }
 
     // Инициализация графики для кругов шума
-    this.noiseCirclesGraphics = this.scene.add.graphics({ x: this.x, y: this.y });
+    this.noiseCirclesGraphics = this.scene.add.graphics(); // x, y будут установлены в update
     this.noiseCirclesGraphics.setDepth(this.depth - 1); // Рисуем под основным спрайтом Vehicle
   }
   
@@ -197,11 +198,24 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
     
     this.updatePhysics(delta);
     
-    this.setPosition(this.position.x, this.position.y); 
+    let logMsg = `Vehicle [${this.id}] update: `;
+    if (!this.isPositionOverriddenBySensorEffect) {
+        this.setPosition(this.position.x, this.position.y); 
+        logMsg += `NOT overridden. Set pos to PHYS (${this.position.x.toFixed(0)}, ${this.position.y.toFixed(0)}). Sprite is now at (${this.x.toFixed(0)}, ${this.y.toFixed(0)}).`;
+    } else {
+        logMsg += `OVERRIDDEN by sensor. Sprite pos REMAINS (${this.x.toFixed(0)}, ${this.y.toFixed(0)}). True phys still (${this.position.x.toFixed(0)}, ${this.position.y.toFixed(0)}).`;
+    }
+
     this.setRotation(Phaser.Math.DegToRad(this.direction));
 
-    if (this.textInfo && this.textInfo.visible) { 
-        this.textInfo.setPosition(this.x, this.y - this.displayHeight / 2 - 10);
+    if (this.textInfo) { 
+        if (this.textInfo.visible) { 
+            this.textInfo.setPosition(this.x, this.y - this.displayHeight / 2 - 10);
+        }
+    }
+
+    if (Settings.DEBUG) { 
+        console.log(logMsg + ` Visible: ${this.visible}, EntityType: ${this.entityType}, OverriddenFlagValueAtEndOfVehicleUpdate: ${this.isPositionOverriddenBySensorEffect}`);
     }
 
     if (this.noiseCirclesGraphics) {
@@ -210,7 +224,8 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
       const debugPanelIsActive = isMethodAvailable && mainScene.isDebugPanelActive();
       const showAllNoiseCirclesInDebug = Settings.DEBUG && debugPanelIsActive;
       
-      const finalShouldShowCircles = (this.displaySelected || showAllNoiseCirclesInDebug) && this.entityType !== 'Torpedo';
+      const shouldShowForEntityType = this.entityType !== 'Torpedo';
+      const finalShouldShowCircles = (this.displaySelected || showAllNoiseCirclesInDebug) && shouldShowForEntityType;
 
       if (finalShouldShowCircles) {
         this.updateNoiseCircles(); 
@@ -278,17 +293,8 @@ export class Vehicle extends Phaser.GameObjects.Sprite {
     this.position.x += this.velocity.x * deltaSeconds;
     this.position.y += this.velocity.y * deltaSeconds;
 
-    // Обновляем this.x и this.y спрайта Phaser
-    this.x = this.position.x;
-    this.y = this.position.y;
-
-    // Сохраняем "истинную" позицию
-    this.truePhaserPosition.set(this.x, this.y);
-
-    // Обновление текстовой информации
-    if (this.textInfo) {
-      this.textInfo.setPosition(this.x, this.y - this.displayHeight / 2 - 10);
-    }
+    // truePhaserPosition всегда отражает актуальную физическую позицию this.position
+    this.truePhaserPosition.set(this.position.x, this.position.y);
   }
   
   /**

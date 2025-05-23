@@ -2,6 +2,10 @@
  * Настройки игры
  */
 export class Settings {
+
+  static readonly SUBMARINE_SHALLOW_DEPTH_MAX: number = 150;
+  static readonly SUBMARINE_PERISCOPE_DEPTH_MAX: number = 50;
+
   // Информация о версии
   static readonly CURRENT_PROGRAM: string = "Silent Red Storm";
   static readonly CURRENT_VERSION: string = "v.06.0";

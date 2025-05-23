@@ -555,85 +555,104 @@ export class MainScene extends Phaser.Scene {
     const perceivingShip = this.selectedVehicleForInformer || this.myShip;
     if (!perceivingShip) return;
 
-    const allPotentialTargets: Vehicle[] = [
-        ...this.redShips,
-        ...this.whiteShips,
-        ...this.redTorpedos,
-        ...this.whiteTorpedos
-    ];
+    const allPotentialTargets = [...this.redShips, ...this.whiteShips, ...this.redTorpedos, ...this.whiteTorpedos];
 
-    for (const vehicle of allPotentialTargets) {
-      if (!vehicle.active) { 
-        vehicle.setVisible(false);
-        if (vehicle.textInfo) vehicle.textInfo.setVisible(false);
+    for (const otherVehicle of allPotentialTargets) {
+      if (!otherVehicle.active) {
+        otherVehicle.setVisible(false);
+        if (otherVehicle.textInfo) otherVehicle.textInfo.setVisible(false);
         continue;
       }
 
-      if (vehicle === perceivingShip || vehicle.getForces() === perceivingShip.getForces()) {
-        vehicle.setVisible(true);
-        const realPos = vehicle.getTruePositionBeforeSensorEffects();
-        vehicle.setPosition(realPos.x, realPos.y);
-        if (vehicle.textInfo) {
-          vehicle.textInfo.setVisible(true);
-          let infoText = `ID: ${vehicle.id}`;
-          if (vehicle instanceof Ship) { 
-            infoText += `\nSpd: ${vehicle.getSpeed().toFixed(1)} Dir: ${vehicle.getDirection().toFixed(0)}`;
-            if (vehicle instanceof Submarine) {
-                infoText += `\nDepth: ${vehicle.getDepth()}`;
-            }
-          } else if (vehicle instanceof Torpedo) {
-             infoText += `\nTrp Spd: ${vehicle.getSpeed().toFixed(1)}`;
-          }
-          vehicle.textInfo.setText(infoText);
-        }
-        continue;
-      }
+      // Сбрасываем флаг для КАЖДОГО объекта в начале его обработки в этом цикле.
+      // MainScene теперь полностью отвечает за установку этого флага.
+      (otherVehicle as Vehicle).isPositionOverriddenBySensorEffect = false;
 
-      const perceivedInfo = perceivingShip.perceivedTargets.get(vehicle.id);
+      otherVehicle.setVisible(false); // По умолчанию все скрываем
+      if (otherVehicle.textInfo) otherVehicle.textInfo.setVisible(false);
 
-      if (!perceivedInfo || perceivedInfo.detectionState === DetectionState.NO_CONTACT) {
-        vehicle.setVisible(false);
-        if (vehicle.textInfo) vehicle.textInfo.setVisible(false);
-      } else {
-        vehicle.setVisible(true); 
-        // Используем новый метод CoordUtils.logicalToPhaser
-        const displayPhaserPos = CoordUtils.logicalToPhaser(perceivedInfo.displayPositionLogical);
-        const realPhaserPos = vehicle.getTruePositionBeforeSensorEffects();
-
-        switch (perceivedInfo.detectionState) {
-          case DetectionState.ZONE_1_UNCERTAIN:
-            vehicle.setPosition(displayPhaserPos.x, displayPhaserPos.y);
-            if (vehicle.textInfo) {
-              vehicle.textInfo.setVisible(true);
-              vehicle.textInfo.setText(`ID: ${vehicle.id}\nCONTACT UNCLEAR`);
-            }
-            break;
-
-          case DetectionState.ZONE_2_LOCALIZED:
-            vehicle.setPosition(realPhaserPos.x, realPhaserPos.y);
-            if (vehicle.textInfo) {
-              vehicle.textInfo.setVisible(true);
-              vehicle.textInfo.setText(`ID: ${vehicle.id}\nCONTACT LOCALIZED`);
-            }
-            break;
-
-          case DetectionState.ZONE_3_IDENTIFIED:
-            vehicle.setPosition(realPhaserPos.x, realPhaserPos.y);
-            if (vehicle.textInfo) {
-              vehicle.textInfo.setVisible(true);
-              let infoText = `ID: ${vehicle.id}`;
-              if (vehicle instanceof Ship) {
-                 infoText += `\nTyp: ${vehicle.constructor.name}\nSpd: ${vehicle.getSpeed().toFixed(1)} Dir: ${vehicle.getDirection().toFixed(0)}`;
-                 if (vehicle instanceof Submarine) {
-                    infoText += `\nDepth: ${vehicle.getDepth()}`;
+      if (otherVehicle === perceivingShip || otherVehicle.getForces() === perceivingShip.getForces()) {
+        otherVehicle.setVisible(true); 
+        if (otherVehicle.textInfo) {
+          otherVehicle.textInfo.setVisible(true); 
+          let text = `ID: ${otherVehicle.id} (${otherVehicle.entityType})\nFriendly`;
+          if (otherVehicle instanceof Ship) {
+            text += `\nSpd: ${otherVehicle.getSpeed().toFixed(1)} Dir: ${otherVehicle.getDirection().toFixed(0)}\nPow: ${otherVehicle.getPower()}`;
+            if (otherVehicle instanceof Submarine) {
+                 let depthStateText = "Surface";
+                 if (otherVehicle.getDepth() === 0) {
+                    depthStateText = "Surface";
+                 } else if (otherVehicle.periscope && otherVehicle.getDepth() <= Settings.SUBMARINE_PERISCOPE_DEPTH_MAX) {
+                     depthStateText = "Periscope";
+                 } else if (otherVehicle.getDepth() > Settings.SUBMARINE_PERISCOPE_DEPTH_MAX && otherVehicle.getDepth() <= Settings.SUBMARINE_SHALLOW_DEPTH_MAX) {
+                     depthStateText = "Shallow";
+                 } else if (otherVehicle.getDepth() > Settings.SUBMARINE_SHALLOW_DEPTH_MAX) {
+                     depthStateText = "Deep";
                  }
-              } else if (vehicle instanceof Torpedo) {
-                 infoText += `\nTyp: TORPEDO\nSpd: ${vehicle.getSpeed().toFixed(1)}`;
-              }
-              vehicle.textInfo.setText(infoText);
+                 text += `\nDepth: ${otherVehicle.getDepth().toFixed(0)} (${depthStateText})`;
             }
-            break;
+          }
+          otherVehicle.textInfo.setText(text);
         }
+      } else { // Это враг
+        const perceivedInfo = perceivingShip.perceivedTargets.get(otherVehicle.id);
+
+        if (perceivedInfo && perceivedInfo.detectionState !== DetectionState.NO_CONTACT) {
+          otherVehicle.setVisible(true); 
+          if (otherVehicle.textInfo) {
+            otherVehicle.textInfo.setVisible(true); 
+          }
+
+          let targetText = "";
+
+          switch (perceivedInfo.detectionState) {
+            case DetectionState.ZONE_1_UNCERTAIN:
+              const displayPhaserPosZone1 = CoordUtils.logicalToPhaser(perceivedInfo.displayPositionLogical);
+              // Флаг устанавливается в true ТОЛЬКО ЗДЕСЬ для Зоны 1
+              (otherVehicle as Vehicle).isPositionOverriddenBySensorEffect = true;
+              otherVehicle.setPosition(displayPhaserPosZone1.x, displayPhaserPosZone1.y);
+              targetText = "CONTACT UNCLEAR";
+              if (Settings.DEBUG) { 
+                console.log(`MainScene ZONE 1 [${otherVehicle.id}]: SET VISIBLE, POS JUMPED to (${displayPhaserPosZone1.x.toFixed(0)}, ${displayPhaserPosZone1.y.toFixed(0)}). True phys pos: (${(otherVehicle as Vehicle).getPosition().x.toFixed(0)}, ${(otherVehicle as Vehicle).getPosition().y.toFixed(0)}). Overridden flag set to: ${(otherVehicle as Vehicle).isPositionOverriddenBySensorEffect}`);
+              }
+              break;
+            case DetectionState.ZONE_2_LOCALIZED:
+              targetText = "CONTACT LOCALIZED";
+              // Флаг isPositionOverriddenBySensorEffect остается false (сброшен в начале цикла по otherVehicle)
+              if (Settings.DEBUG) {
+                console.log(`MainScene ZONE 2 [${otherVehicle.id}]: True pos: (${(otherVehicle as Vehicle).getPosition().x.toFixed(0)}, ${(otherVehicle as Vehicle).getPosition().y.toFixed(0)}). Overridden flag is: ${(otherVehicle as Vehicle).isPositionOverriddenBySensorEffect}`);
+              }
+              break;
+            case DetectionState.ZONE_3_IDENTIFIED:
+              let type = otherVehicle.entityType;
+              targetText = `Target: ${type}\nSpd: ${otherVehicle.getSpeed().toFixed(1)}\nDir: ${otherVehicle.getDirection().toFixed(0)}\nPow: ${otherVehicle.getPower()}`;
+              if (otherVehicle instanceof Submarine) {
+                  let depthStateText = "Surface";
+                  if (otherVehicle.getDepth() === 0) {
+                    depthStateText = "Surface";
+                  } else if (otherVehicle.periscope && otherVehicle.getDepth() <= Settings.SUBMARINE_PERISCOPE_DEPTH_MAX) {
+                      depthStateText = "Periscope";
+                  } else if (otherVehicle.getDepth() > Settings.SUBMARINE_PERISCOPE_DEPTH_MAX && otherVehicle.getDepth() <= Settings.SUBMARINE_SHALLOW_DEPTH_MAX) {
+                      depthStateText = "Shallow";
+                  } else if (otherVehicle.getDepth() > Settings.SUBMARINE_SHALLOW_DEPTH_MAX) {
+                      depthStateText = "Deep";
+                  }
+                  targetText += `\nDepth: ${otherVehicle.getDepth().toFixed(0)} (${depthStateText})`;
+              }
+              // Флаг isPositionOverriddenBySensorEffect остается false
+              if (Settings.DEBUG) {
+                console.log(`MainScene ZONE 3 [${otherVehicle.id}]: True pos: (${(otherVehicle as Vehicle).getPosition().x.toFixed(0)}, ${(otherVehicle as Vehicle).getPosition().y.toFixed(0)}). Overridden flag is: ${(otherVehicle as Vehicle).isPositionOverriddenBySensorEffect}`);
+              }
+              break;
+            default:
+              targetText = "ERROR STATE IN PERCEPTION";
+              break;
+          }
+
+          if (otherVehicle.textInfo) {
+            otherVehicle.textInfo.setText(targetText);
+          }
+        } 
       }
     }
   }
