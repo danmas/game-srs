@@ -760,7 +760,7 @@ export class MainScene extends Phaser.Scene {
       }
     }
 
-    if (pointer.leftButtonDown()) {
+    if (pointer.leftButtonDown() && !((pointer.event.ctrlKey || pointer.event.metaKey))) {
       if (clickedObject) {
         this.setSelectedVehicleForInformer(clickedObject);
       } else {
@@ -772,7 +772,10 @@ export class MainScene extends Phaser.Scene {
         this.dragStartX = pointer.x;
         this.dragStartY = pointer.y;
       }
-    } else if (pointer.rightButtonDown()) {
+    // } else if (pointer.rightButtonDown()) {
+// --- NEW: Ctrl + Left Click for Waypoint Setting ---
+    // Если нажат Ctrl + ЛКМ (и не в режиме прицеливания торпедой, так как там return выше)
+    } else    if (pointer.leftButtonDown() && (pointer.event.ctrlKey || pointer.event.metaKey)) {
       // Только правый клик отвечает за WP и должен предотвращать контекстное меню
       pointer.event.preventDefault(); 
       pointer.event.stopPropagation(); // Добавляем stopPropagation
